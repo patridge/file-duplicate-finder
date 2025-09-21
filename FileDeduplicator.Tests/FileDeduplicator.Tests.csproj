@@ -24,4 +24,10 @@
       <ProjectReference Include="..\FileDeduplicator.Common\FileDeduplicator.Common.csproj" />
     </ItemGroup>
 
+  <ItemGroup>
+    <None Update="test_files/**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
