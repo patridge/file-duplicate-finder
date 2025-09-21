@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileDeduplicator", "FileDeduplicator\FileDeduplicator.csproj", "{91528F47-60F0-43A7-830E-69BC6D631917}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileDeduplicator.Tests", "FileDeduplicator.Tests\FileDeduplicator.Tests.csproj", "{A7612073-3129-485E-AA96-DC7523C4D9E7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileDeduplicator.Common", "FileDeduplicator.Common\FileDeduplicator.Common.csproj", "{BEC920A9-2F5E-4C8B-A3B9-D91075FD9F17}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{91528F47-60F0-43A7-830E-69BC6D631917}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{91528F47-60F0-43A7-830E-69BC6D631917}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{91528F47-60F0-43A7-830E-69BC6D631917}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{91528F47-60F0-43A7-830E-69BC6D631917}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A7612073-3129-485E-AA96-DC7523C4D9E7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A7612073-3129-485E-AA96-DC7523C4D9E7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A7612073-3129-485E-AA96-DC7523C4D9E7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A7612073-3129-485E-AA96-DC7523C4D9E7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BEC920A9-2F5E-4C8B-A3B9-D91075FD9F17}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BEC920A9-2F5E-4C8B-A3B9-D91075FD9F17}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BEC920A9-2F5E-4C8B-A3B9-D91075FD9F17}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BEC920A9-2F5E-4C8B-A3B9-D91075FD9F17}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
