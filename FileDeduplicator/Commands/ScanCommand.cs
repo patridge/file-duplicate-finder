@@ -67,7 +67,8 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
                     return fileDetails.FilePath != otherFileDetails.FilePath
                            && fileDetails.Sha256Hash.AsSpan().SequenceEqual(otherFileDetails.Sha256Hash.AsSpan());
                 });
-            });
+            })
+            .ToArray();
         if (matches.Any())
         {
             Console.WriteLine("Found duplicate files:");
