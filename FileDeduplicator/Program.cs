@@ -15,7 +15,10 @@ internal class Program
             config.ValidateExamples();
             config.AddExample("scan");
 
-            config.AddCommand<ScanCommand>("scan");
+            config.AddCommand<ScanCommand>("scan")
+                .WithExample("scan", "--path", "./path/to/files");
+            
+            // TODO: Offer `find` command to locate duplicates of a given starting file.
 
             // // Add
             // config.AddBranch<AddSettings>("add", add =>

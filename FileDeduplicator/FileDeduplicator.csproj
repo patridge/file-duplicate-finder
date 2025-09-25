@@ -12,4 +12,8 @@
       <PackageReference Include="Spectre.Console.Cli" Version="0.51.1" />
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\FileDeduplicator.Common\FileDeduplicator.Common.csproj" />
+    </ItemGroup>
+
 </Project>
