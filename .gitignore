@@ -429,3 +429,6 @@ FodyWeavers.xsd
 
 # JetBrains Rider noise
 .idea/
+
+# macOS noise
+.DS_Store
