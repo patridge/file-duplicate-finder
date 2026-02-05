@@ -1,8 +1,9 @@
 using System.ComponentModel;
 using FileDeduplicator.Common;
+using Spectre.Console;
 using Spectre.Console.Cli;
 
-namespace MyApp.Commands;
+namespace FileDeduplicator.Commands;
 
 [Description("Scan files for duplicates.")]
 public sealed class ScanCommand : Command<ScanCommand.Settings>
@@ -11,7 +12,7 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
     {
         [CommandOption("-p|--path <PATH>")]
         [Description("The path to start scanning files (defaults to the current directory if not provided).")]
-        public string StartPath { get; set; }
+        public required string StartPath { get; set; }
         
         // TODO: Add any other configuration settings.
 
@@ -21,23 +22,21 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
         // public string Configuration { get; set; }
     }
 
-    public override int Execute(CommandContext context, Settings settings)
+    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         // SettingsDumper.Dump(settings);
-        
         var startPath = string.IsNullOrWhiteSpace(settings.StartPath)
             ? Environment.CurrentDirectory
             : settings.StartPath;
-        
         Console.WriteLine($"Scanning files in: {startPath}");
         
         var fileDetailsList = new List<FileDetails>();
-        
+
         // TODO: Scan all files, recursively, and generate SHA-256 hashes.
         //       * Identify files to hash.
         var currentFilePaths = Directory.GetFiles(startPath, "*", SearchOption.AllDirectories);
         // FUTURE: May want to handle the recursion manually to avoid any super-deep file structure delays.
-        
+
         foreach (var filePath in currentFilePaths)
         {
             Console.WriteLine($"Found file: {filePath}");
@@ -56,7 +55,7 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
             });
             Console.WriteLine($"  SHA-256: {hashBytes.ToHexString()}");
         }
-        
+
         // TODO: Store file paths and hashes in a suitable data system (e.g., SQLite or LiteDB).
         // TODO: Compare all hashes and identify duplicates.
         var matches = fileDetailsList

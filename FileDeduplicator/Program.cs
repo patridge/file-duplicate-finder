@@ -1,8 +1,8 @@
-﻿using MyApp.Commands;
+﻿using FileDeduplicator.Commands;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
-namespace MyApp;
+namespace FileDeduplicator;
 
 internal class Program
 {
@@ -16,9 +16,11 @@ internal class Program
             config.AddExample("scan");
 
             config.AddCommand<ScanCommand>("scan")
-                .WithExample("scan", "--path", "./path/to/files");
+                .WithExample("scan", "--path", "./path/to/files-to-scan");
             
             // TODO: Offer `find` command to locate duplicates of a given starting file.
+            // config.AddCommand<FindCommand>("find")
+            //     .WithExample("find", "--file", "./path/to/file-with-hash-to-match.txt");
 
             // // Add
             // config.AddBranch<AddSettings>("add", add =>

@@ -2,13 +2,13 @@ namespace FileDeduplicator.Common;
 
 public class FileDetails
 {
-    public DateTime DetailsRetrieved { get; set; }
-    public string FilePath { get; set; }
-    public byte[] Sha256Hash { get; set; }
-    public long FileSize { get; set; }
-    public DateTime LastModified { get; set; }
-    public DateTime Created { get; set; }
-    public DateTime LastAccessed { get; set; }
+    public required string FilePath { get; set; }
+    public required DateTime DetailsRetrieved { get; set; }
+    public required byte[] Sha256Hash { get; set; }
+    public required long FileSize { get; set; }
+    public required DateTime LastModified { get; set; }
+    public required DateTime Created { get; set; }
+    public required DateTime LastAccessed { get; set; }
     // FUTURE: File type
     // FUTURE: Metadata (e.g., image EXIF, MP3 ID3 tags, etc.)
 }
