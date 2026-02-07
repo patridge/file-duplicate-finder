@@ -58,22 +58,33 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
 
         // TODO: Store file paths and hashes in a suitable data system (e.g., SQLite or LiteDB).
         // TODO: Compare all hashes and identify duplicates.
-        var matches = fileDetailsList
-            .Where(fileDetails =>
-            {
-                return fileDetailsList.Any(otherFileDetails =>
-                {
-                    return fileDetails.FilePath != otherFileDetails.FilePath
-                           && fileDetails.Sha256Hash.AsSpan().SequenceEqual(otherFileDetails.Sha256Hash.AsSpan());
-                });
-            })
+        var duplicateGroups = fileDetailsList
+            .GroupBy(fd => fd.Sha256Hash.ToHexString())
+            .Where(g => g.Count() > 1)
+            .OrderBy(g => g.Key)
             .ToArray();
-        if (matches.Any())
+
+        if (duplicateGroups.Any())
         {
             Console.WriteLine("Found duplicate files:");
-            foreach (var match in matches.OrderBy(fileDetails => fileDetails.Sha256Hash.ToHexString()))
+            Console.WriteLine();
+
+            foreach (var group in duplicateGroups)
             {
-                Console.WriteLine($"  {match.FilePath} (SHA-256: {match.Sha256Hash.ToHexString()})");
+                var table = new Table();
+                table.Title = new TableTitle($"[bold yellow]SHA-256: {group.Key}[/]");
+                table.AddColumn(new TableColumn("[bold]Filename[/]").LeftAligned());
+                table.AddColumn(new TableColumn("[bold]Path[/]").LeftAligned());
+
+                foreach (var file in group)
+                {
+                    var fileName = Path.GetFileName(file.FilePath);
+                    var directoryPath = Path.GetDirectoryName(file.FilePath) ?? string.Empty;
+                    table.AddRow(fileName, directoryPath);
+                }
+
+                AnsiConsole.Write(table);
+                Console.WriteLine();
             }
         }
         else
