@@ -1,0 +1,43 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug CLI (test_files)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/FileDeduplicator/bin/Debug/net9.0/FileDeduplicator",
+            "args": [
+                "scan",
+                "--path",
+                "${workspaceFolder}/FileDeduplicator.Tests/test_files"
+            ],
+            "cwd": "${workspaceFolder}/FileDeduplicator",
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        },
+        {
+            "name": "Debug CLI (custom path)",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/FileDeduplicator/bin/Debug/net9.0/FileDeduplicator",
+            "args": [
+                "scan",
+                "--path",
+                "${input:scanPath}"
+            ],
+            "cwd": "${workspaceFolder}/FileDeduplicator",
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        }
+    ],
+    "inputs": [
+        {
+            "id": "scanPath",
+            "type": "promptString",
+            "description": "Path to scan for duplicates",
+            "default": "${workspaceFolder}/FileDeduplicator.Tests/test_files"
+        }
+    ]
+}
