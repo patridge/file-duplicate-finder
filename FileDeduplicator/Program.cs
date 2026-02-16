@@ -17,6 +17,9 @@ internal class Program
 
             config.AddCommand<ScanCommand>("scan")
                 .WithExample("scan", "--path", "./path/to/files-to-scan");
+
+            config.AddCommand<CompareCommand>("compare")
+                .WithExample("compare", "./path/to/file1.txt", "./path/to/file2.txt");
             
             // TODO: Offer `find` command to locate duplicates of a given starting file.
             // config.AddCommand<FindCommand>("find")
