@@ -29,31 +29,13 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
             ? Environment.CurrentDirectory
             : settings.StartPath;
         Console.WriteLine($"Scanning files in: {startPath}");
-        
-        var fileDetailsList = new List<FileDetails>();
 
-        // TODO: Scan all files, recursively, and generate SHA-256 hashes.
-        //       * Identify files to hash.
-        var currentFilePaths = Directory.GetFiles(startPath, "*", SearchOption.AllDirectories);
-        // FUTURE: May want to handle the recursion manually to avoid any super-deep file structure delays.
-
-        foreach (var filePath in currentFilePaths)
+        var scanner = new FileScanner();
+        var fileDetailsList = scanner.ScanDirectory(startPath);
+        foreach (var file in fileDetailsList)
         {
-            Console.WriteLine($"Found file: {filePath}");
-            var fileInfo = new FileInfo(filePath);
-            var hashBytes = FileHelpers.GetFileSha256(filePath);
-            // TODO: Compare to `FileHelpers.GetFileSha256(fileInfo.OpenRead())`.
-            fileDetailsList.Add(new FileDetails
-            {
-                DetailsRetrieved = DateTime.UtcNow,
-                FilePath = filePath,
-                Sha256Hash = hashBytes,
-                FileSize = fileInfo.Length,
-                LastModified = fileInfo.LastWriteTimeUtc, // File.GetLastWriteTimeUtc(filePath),
-                Created = fileInfo.CreationTimeUtc, // File.GetCreationTimeUtc(filePath),
-                LastAccessed = fileInfo.LastAccessTimeUtc, // File.GetLastAccessTimeUtc(filePath),
-            });
-            Console.WriteLine($"  SHA-256: {hashBytes.ToHexString()}");
+            Console.WriteLine($"Found file: {file.FilePath}");
+            Console.WriteLine($"  SHA-256: {file.Sha256Hash.ToHexString()}");
         }
 
         // TODO: Store file paths and hashes in a suitable data system (e.g., SQLite or LiteDB).
