@@ -54,27 +54,55 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
             bool exitRequested = false;
             while (!exitRequested)
             {
-                // Let user select a hash group interactively
-                var hashChoices = duplicateGroups
-                    .Select(g => $"{g.Key} ({g.Count()} files)")
-                    .ToList();
+
+                // Build enhanced group labels
+                var hashLabelMap = new Dictionary<string, string>();
+                foreach (var g in duplicateGroups) {
+                    var files = g.ToList();
+                    var fileNames = files.Select(f => Path.GetFileName(f.FilePath)).Distinct().ToList();
+                    string prefix;
+                    if (fileNames.Count == 1)
+                    {
+                        prefix = $"{fileNames[0]}";
+                    }
+                    else
+                    {
+                        // Try to get common extension
+                        var extensions = files.Select(f => Path.GetExtension(f.FilePath).ToLowerInvariant()).Distinct().ToList();
+                        if (extensions.Count == 1 && !string.IsNullOrWhiteSpace(extensions[0]))
+                        {
+                            prefix = $"{extensions[0]} file";
+                        }
+                        else
+                        {
+                            prefix = "multiple files";
+                        }
+                    }
+                    var hashEscaped = g.Key.Replace("[", "[[").Replace("]", "]]");
+                    var label = $"{prefix} [[{hashEscaped}]] ({g.Count()} files)";
+                    hashLabelMap[label] = g.Key;
+                }
+                var hashChoices = hashLabelMap.Keys.ToList();
                 hashChoices.Add("[red]Exit[/]");
 
-                var selectedHash = AnsiConsole.Prompt(
+                var selectedLabel = AnsiConsole.Prompt(
                     new SelectionPrompt<string>()
-                        .Title("[bold yellow]Select a duplicate group (by SHA-256) or Exit:[/]")
+                        .Title("[bold yellow]Select a duplicate group or Exit:[/]")
                         .PageSize(10)
                         .AddChoices(hashChoices)
                 );
 
-                if (selectedHash == "[red]Exit[/]")
+                if (selectedLabel == "[red]Exit[/]")
                 {
                     exitRequested = true;
                     break;
                 }
 
-                // Find the selected group
-                var selectedKey = selectedHash.Split(' ')[0];
+                if (!hashLabelMap.TryGetValue(selectedLabel, out var selectedKey) || string.IsNullOrEmpty(selectedKey))
+                {
+                    AnsiConsole.MarkupLine("[red]Could not determine hash from selection. Skipping group.[/]");
+                    continue;
+                }
                 var selectedGroup = duplicateGroups.First(g => g.Key == selectedKey);
 
                 bool backRequested = false;
