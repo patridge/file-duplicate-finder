@@ -5,7 +5,11 @@ namespace FileDeduplicator.Common
     public class BinaryFileComparer : IFileComparer
     {
         public IFileTypeIdentifier? Identifier { get; set; }
-        public bool IgnoreTimestamps { get; set; } = false;
+
+        /// <summary>
+        /// When true, ignores file timestamp differences (last write, creation time).
+        /// </summary>
+        public bool IgnoreMetadata { get; set; } = false;
 
         /// <summary>
         /// BinaryFileComparer can compare any file type.
@@ -16,7 +20,7 @@ namespace FileDeduplicator.Common
         {
             var file1 = new FileInfo(filePath1);
             var file2 = new FileInfo(filePath2);
-            if (!IgnoreTimestamps)
+            if (!IgnoreMetadata)
             {
                 if (file1.LastWriteTimeUtc != file2.LastWriteTimeUtc || file1.CreationTimeUtc != file2.CreationTimeUtc)
                     return false;

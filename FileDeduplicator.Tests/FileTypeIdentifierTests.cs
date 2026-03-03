@@ -246,6 +246,7 @@ namespace FileDeduplicator.Tests
     internal class StubFileComparer : IFileComparer
     {
         public IFileTypeIdentifier? Identifier { get; set; }
+        public bool IgnoreMetadata { get; set; } = true;
         public bool AreFilesEquivalent(string filePath1, string filePath2) => false;
     }
 }

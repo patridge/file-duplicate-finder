@@ -6,15 +6,19 @@ namespace FileDeduplicator.Common
     public class AudioFileComparer : IFileComparer
     {
         public IFileTypeIdentifier? Identifier { get; set; } = new AudioFileIdentifier();
-        public bool IgnoreId3Tags { get; set; } = true;
+
+        /// <summary>
+        /// When true, ignores ID3 tag differences and compares only audio frame data.
+        /// </summary>
+        public bool IgnoreMetadata { get; set; } = true;
 
         public bool AreFilesEquivalent(string filePath1, string filePath2)
         {
             var bytes1 = File.ReadAllBytes(filePath1);
             var bytes2 = File.ReadAllBytes(filePath2);
 
-            int offset1 = IgnoreId3Tags ? GetAudioDataOffset(bytes1) : 0;
-            int offset2 = IgnoreId3Tags ? GetAudioDataOffset(bytes2) : 0;
+            int offset1 = IgnoreMetadata ? GetAudioDataOffset(bytes1) : 0;
+            int offset2 = IgnoreMetadata ? GetAudioDataOffset(bytes2) : 0;
 
             int len1 = bytes1.Length - offset1;
             int len2 = bytes2.Length - offset2;

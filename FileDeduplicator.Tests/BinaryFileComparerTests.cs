@@ -56,7 +56,7 @@ namespace FileDeduplicator.Tests
             File.WriteAllText(_file1, "same");
             File.Copy(_file1, _file2, true);
             File.SetLastWriteTimeUtc(_file2, DateTime.UtcNow.AddHours(-1));
-            var comparer = new BinaryFileComparer { IgnoreTimestamps = true };
+            var comparer = new BinaryFileComparer { IgnoreMetadata = true };
 
             var result = comparer.AreFilesEquivalent(_file1, _file2);
 
@@ -81,7 +81,7 @@ namespace FileDeduplicator.Tests
         {
             File.WriteAllText(_file1, "abc");
             File.WriteAllText(_file2, "def");
-            var comparer = new BinaryFileComparer { IgnoreTimestamps = true };
+            var comparer = new BinaryFileComparer { IgnoreMetadata = true };
 
             var result = comparer.AreFilesEquivalent(_file1, _file2);
 

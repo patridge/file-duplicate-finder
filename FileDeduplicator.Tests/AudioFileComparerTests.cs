@@ -32,7 +32,7 @@ namespace FileDeduplicator.Tests
             var mp3Bytes = BuildMinimalMp3(title: "Test Song");
             File.WriteAllBytes(_file1, mp3Bytes);
             File.WriteAllBytes(_file2, mp3Bytes);
-            var comparer = new AudioFileComparer { IgnoreId3Tags = false };
+            var comparer = new AudioFileComparer { IgnoreMetadata = false };
 
             var result = comparer.AreFilesEquivalent(_file1, _file2);
 
@@ -45,7 +45,7 @@ namespace FileDeduplicator.Tests
             var audioData = BuildMinimalMp3Frame();
             File.WriteAllBytes(_file1, BuildMp3WithId3(title: "Song A", audioData: audioData));
             File.WriteAllBytes(_file2, BuildMp3WithId3(title: "Song B", audioData: audioData));
-            var comparer = new AudioFileComparer { IgnoreId3Tags = true };
+            var comparer = new AudioFileComparer { IgnoreMetadata = true };
 
             var result = comparer.AreFilesEquivalent(_file1, _file2);
 
@@ -58,7 +58,7 @@ namespace FileDeduplicator.Tests
             var audioData = BuildMinimalMp3Frame();
             File.WriteAllBytes(_file1, BuildMp3WithId3(title: "Song A", audioData: audioData));
             File.WriteAllBytes(_file2, BuildMp3WithId3(title: "Song B", audioData: audioData));
-            var comparer = new AudioFileComparer { IgnoreId3Tags = false };
+            var comparer = new AudioFileComparer { IgnoreMetadata = false };
 
             var result = comparer.AreFilesEquivalent(_file1, _file2);
 
@@ -70,7 +70,7 @@ namespace FileDeduplicator.Tests
         {
             File.WriteAllBytes(_file1, BuildMinimalMp3(title: "Same Title", audioByte: 0x00));
             File.WriteAllBytes(_file2, BuildMinimalMp3(title: "Same Title", audioByte: 0x7F));
-            var comparer = new AudioFileComparer { IgnoreId3Tags = true };
+            var comparer = new AudioFileComparer { IgnoreMetadata = true };
 
             var result = comparer.AreFilesEquivalent(_file1, _file2);
 

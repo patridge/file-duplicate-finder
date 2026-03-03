@@ -3,7 +3,11 @@ namespace FileDeduplicator.Common
     public class ImageFileComparer : IFileComparer
     {
         public IFileTypeIdentifier? Identifier { get; set; } = new ImageFileIdentifier();
-        public bool IgnoreExif { get; set; } = true;
+
+        /// <summary>
+        /// When true, ignores EXIF/metadata differences and compares only pixel data.
+        /// </summary>
+        public bool IgnoreMetadata { get; set; } = true;
 
         public bool AreFilesEquivalent(string filePath1, string filePath2)
         {

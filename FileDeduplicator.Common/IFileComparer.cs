@@ -9,8 +9,14 @@ namespace FileDeduplicator.Common
         IFileTypeIdentifier? Identifier { get; set; }
 
         /// <summary>
+        /// When true, the comparer ignores format-specific metadata differences (e.g., ID3 tags, EXIF data, timestamps)
+        /// and compares only the primary content of the files. Defaults to true.
+        /// </summary>
+        bool IgnoreMetadata { get; set; }
+
+        /// <summary>
         /// Returns true if this comparer can handle the given file, based on its Identifier.
-        /// When no Identifier is set, returns false for anything else.
+        /// When no Identifier is set, returns false.
         /// </summary>
         bool CanCompare(string filePath)
         {
