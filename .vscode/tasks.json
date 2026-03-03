@@ -24,6 +24,20 @@
 			"args": [],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "run ScanCommand (test-ui)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"--project",
+				"FileDeduplicator/FileDeduplicator.csproj",
+				"scan",
+				"--test-ui"
+			],
+			"isBackground": false,
+			"group": "test"
 		}
 	]
 }

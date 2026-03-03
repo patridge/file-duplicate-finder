@@ -10,10 +10,13 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
 {
     public sealed class Settings : CommandSettings
     {
+        [CommandOption("--test-ui")]
+        [Description("Show a stubbed UI with sample duplicate groups for testing the paging system.")]
+        public bool TestUi { get; set; }
+
         [CommandOption("-p|--path <PATH>")]
         [Description("The path to start scanning files (defaults to the current directory if not provided).")]
         public required string StartPath { get; set; }
-        
         // TODO: Add any other configuration settings.
 
         // [CommandOption("-c|--configuration <CONFIGURATION>")]
@@ -30,21 +33,49 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
             : settings.StartPath;
         Console.WriteLine($"Scanning files in: {startPath}");
 
-        var scanner = new FileScanner();
-        var fileDetailsList = scanner.ScanDirectory(startPath);
-        foreach (var file in fileDetailsList)
-        {
-            Console.WriteLine($"Found file: {file.FilePath}");
-            Console.WriteLine($"  SHA-256: {file.Sha256Hash.ToHexString()}");
-        }
 
-        // TODO: Store file paths and hashes in a suitable data system (e.g., SQLite or LiteDB).
-        // TODO: Compare all hashes and identify duplicates.
-        var duplicateGroups = fileDetailsList
-            .GroupBy(fd => fd.Sha256Hash.ToHexString())
-            .Where(g => g.Count() > 1)
-            .OrderBy(g => g.Key)
-            .ToArray();
+        IEnumerable<IGrouping<string, FileDetails>> duplicateGroupsEnum;
+        if (settings.TestUi)
+        {
+            // Inject 25 fake duplicate groups, each with 2-3 fake files
+            var fakeGroups = new List<List<FileDetails>>();
+            for (int i = 1; i <= 25; i++)
+            {
+                var group = new List<FileDetails>();
+                int fileCount = 2 + (i % 2); // alternate 2 or 3 files
+                for (int j = 1; j <= fileCount; j++)
+                {
+                    group.Add(new FileDetails
+                    {
+                        FilePath = $"/fake/path/group{i}/file{j}_group{i}.txt",
+                        Sha256Hash = System.Text.Encoding.UTF8.GetBytes($"fakehash{i}"),
+                        DetailsRetrieved = DateTime.Now,
+                        FileSize = 1000 + i * 10 + j,
+                        LastModified = DateTime.Now.AddDays(-i),
+                        Created = DateTime.Now.AddDays(-i-10),
+                        LastAccessed = DateTime.Now.AddDays(-i+1)
+                    });
+                }
+                fakeGroups.Add(group);
+            }
+            duplicateGroupsEnum = fakeGroups
+                .Select(g => g.GroupBy(f => f.Sha256Hash.ToHexString()).First());
+        }
+        else
+        {
+            var scanner = new FileScanner();
+            var fileDetailsList = scanner.ScanDirectory(startPath);
+            foreach (var file in fileDetailsList)
+            {
+                Console.WriteLine($"Found file: {file.FilePath}");
+                Console.WriteLine($"  SHA-256: {file.Sha256Hash.ToHexString()}");
+            }
+            duplicateGroupsEnum = fileDetailsList
+                .GroupBy(fd => fd.Sha256Hash.ToHexString())
+                .Where(g => g.Count() > 1)
+                .OrderBy(g => g.Key);
+        }
+        var duplicateGroups = duplicateGroupsEnum.ToArray();
 
         if (duplicateGroups.Any())
         {
@@ -89,23 +120,25 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
                     var label = $"{prefix} [[{hashEscaped}]] ({g.Count()} files)";
                     hashLabelMap[label] = g.Key;
                 }
-                var hashChoices = new List<string>();
-                // Paging indicator
-                hashChoices.Add($"[grey]Page {currentPage + 1} of {totalPages}[/]");
+
+
+                // Print the page indicator above the prompt so it is not selectable
+                AnsiConsole.MarkupLine($"[grey]Page {currentPage + 1} of {totalPages}[/]");
+
+                var prompt = new SelectionPrompt<string>()
+                    .Title($"[bold yellow]Select a duplicate group, page, or Exit:[/]")
+                    .PageSize(pageSize + 3)
+                    .HighlightStyle("bold yellow");
                 // Prev/Next page menu items
                 if (currentPage > 0)
-                    hashChoices.Add("[blue]Prev Page[/]");
-                hashChoices.AddRange(hashLabelMap.Keys);
+                    prompt.AddChoice("[blue]Prev Page[/]");
+                foreach (var label in hashLabelMap.Keys)
+                    prompt.AddChoice(label);
                 if (currentPage < totalPages - 1)
-                    hashChoices.Add("[blue]Next Page[/]");
-                hashChoices.Add("[red]Exit[/]");
+                    prompt.AddChoice("[blue]Next Page[/]");
+                prompt.AddChoice("[red]Exit[/]");
 
-                var selectedLabel = AnsiConsole.Prompt(
-                    new SelectionPrompt<string>()
-                        .Title("[bold yellow]Select a duplicate group, page, or Exit:[/]")
-                        .PageSize(pageSize + 3)
-                        .AddChoices(hashChoices)
-                );
+                var selectedLabel = AnsiConsole.Prompt(prompt);
 
                 if (selectedLabel == "[red]Exit[/]")
                 {
@@ -120,11 +153,6 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
                 if (selectedLabel == "[blue]Next Page[/]")
                 {
                     if (currentPage < totalPages - 1) currentPage++;
-                    continue;
-                }
-                // Ignore paging indicator line
-                if (selectedLabel.StartsWith("[grey]Page "))
-                {
                     continue;
                 }
 
