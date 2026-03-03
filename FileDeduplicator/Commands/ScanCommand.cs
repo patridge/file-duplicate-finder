@@ -51,13 +51,20 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
             AnsiConsole.MarkupLine("[green]Found duplicate files![/]");
             AnsiConsole.WriteLine();
 
+            const int pageSize = 10;
+            int currentPage = 0;
+            int totalPages = (int)Math.Ceiling(duplicateGroups.Length / (double)pageSize);
             bool exitRequested = false;
             while (!exitRequested)
             {
+                // Calculate page bounds
+                int startIdx = currentPage * pageSize;
+                int endIdx = Math.Min(startIdx + pageSize, duplicateGroups.Length);
+                var pageGroups = duplicateGroups.Skip(startIdx).Take(pageSize).ToArray();
 
-                // Build enhanced group labels
+                // Build enhanced group labels for this page
                 var hashLabelMap = new Dictionary<string, string>();
-                foreach (var g in duplicateGroups) {
+                foreach (var g in pageGroups) {
                     var files = g.ToList();
                     var fileNames = files.Select(f => Path.GetFileName(f.FilePath)).Distinct().ToList();
                     string prefix;
@@ -82,13 +89,21 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
                     var label = $"{prefix} [[{hashEscaped}]] ({g.Count()} files)";
                     hashLabelMap[label] = g.Key;
                 }
-                var hashChoices = hashLabelMap.Keys.ToList();
+                var hashChoices = new List<string>();
+                // Paging indicator
+                hashChoices.Add($"[grey]Page {currentPage + 1} of {totalPages}[/]");
+                // Prev/Next page menu items
+                if (currentPage > 0)
+                    hashChoices.Add("[blue]Prev Page[/]");
+                hashChoices.AddRange(hashLabelMap.Keys);
+                if (currentPage < totalPages - 1)
+                    hashChoices.Add("[blue]Next Page[/]");
                 hashChoices.Add("[red]Exit[/]");
 
                 var selectedLabel = AnsiConsole.Prompt(
                     new SelectionPrompt<string>()
-                        .Title("[bold yellow]Select a duplicate group or Exit:[/]")
-                        .PageSize(10)
+                        .Title("[bold yellow]Select a duplicate group, page, or Exit:[/]")
+                        .PageSize(pageSize + 3)
                         .AddChoices(hashChoices)
                 );
 
@@ -96,6 +111,21 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
                 {
                     exitRequested = true;
                     break;
+                }
+                if (selectedLabel == "[blue]Prev Page[/]")
+                {
+                    if (currentPage > 0) currentPage--;
+                    continue;
+                }
+                if (selectedLabel == "[blue]Next Page[/]")
+                {
+                    if (currentPage < totalPages - 1) currentPage++;
+                    continue;
+                }
+                // Ignore paging indicator line
+                if (selectedLabel.StartsWith("[grey]Page "))
+                {
+                    continue;
                 }
 
                 if (!hashLabelMap.TryGetValue(selectedLabel, out var selectedKey) || string.IsNullOrEmpty(selectedKey))
