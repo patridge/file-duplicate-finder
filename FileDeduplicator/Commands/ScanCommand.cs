@@ -48,30 +48,131 @@ public sealed class ScanCommand : Command<ScanCommand.Settings>
 
         if (duplicateGroups.Any())
         {
-            Console.WriteLine("Found duplicate files:");
-            Console.WriteLine();
+            AnsiConsole.MarkupLine("[green]Found duplicate files![/]");
+            AnsiConsole.WriteLine();
 
-            foreach (var group in duplicateGroups)
+            bool exitRequested = false;
+            while (!exitRequested)
             {
-                var table = new Table();
-                table.Title = new TableTitle($"[bold yellow]SHA-256: {group.Key}[/]");
-                table.AddColumn(new TableColumn("[bold]Filename[/]").LeftAligned());
-                table.AddColumn(new TableColumn("[bold]Path[/]").LeftAligned());
+                // Let user select a hash group interactively
+                var hashChoices = duplicateGroups
+                    .Select(g => $"{g.Key} ({g.Count()} files)")
+                    .ToList();
+                hashChoices.Add("[red]Exit[/]");
 
-                foreach (var file in group)
+                var selectedHash = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title("[bold yellow]Select a duplicate group (by SHA-256) or Exit:[/]")
+                        .PageSize(10)
+                        .AddChoices(hashChoices)
+                );
+
+                if (selectedHash == "[red]Exit[/]")
                 {
-                    var fileName = Path.GetFileName(file.FilePath);
-                    var directoryPath = Path.GetDirectoryName(file.FilePath) ?? string.Empty;
-                    table.AddRow(fileName, directoryPath);
+                    exitRequested = true;
+                    break;
                 }
 
-                AnsiConsole.Write(table);
-                Console.WriteLine();
+                // Find the selected group
+                var selectedKey = selectedHash.Split(' ')[0];
+                var selectedGroup = duplicateGroups.First(g => g.Key == selectedKey);
+
+                bool backRequested = false;
+                while (!backRequested)
+                {
+                    // Show files in the selected group
+                    var table = new Table();
+                    table.Title = new TableTitle($"[bold yellow]SHA-256: {selectedGroup.Key}[/]");
+                    table.AddColumn(new TableColumn("[bold]Filename[/]").LeftAligned());
+                    table.AddColumn(new TableColumn("[bold]Path[/]").LeftAligned());
+
+                    foreach (var file in selectedGroup)
+                    {
+                        var fileName = Path.GetFileName(file.FilePath);
+                        var directoryPath = Path.GetDirectoryName(file.FilePath) ?? string.Empty;
+                        table.AddRow(fileName, directoryPath);
+                    }
+
+                    AnsiConsole.Write(table);
+
+                    // Let user select a file for further action or go back
+                    var fileChoices = selectedGroup.Select(f => f.FilePath).ToList();
+                    fileChoices.Add("[yellow]Back[/]");
+                    var selectedFile = AnsiConsole.Prompt(
+                        new SelectionPrompt<string>()
+                            .Title("[bold]Select a file to open location, or Back:[/]")
+                            .PageSize(10)
+                            .AddChoices(fileChoices)
+                    );
+
+                    if (selectedFile == "[yellow]Back[/]")
+                    {
+                        backRequested = true;
+                        continue;
+                    }
+
+                    AnsiConsole.MarkupLine($"[blue]You selected:[/] {selectedFile}");
+                    // Open the folder containing the selected file in the system's file explorer
+                    var directory = Path.GetDirectoryName(selectedFile);
+                    if (!string.IsNullOrEmpty(directory))
+                    {
+                        try
+                        {
+                            var absFile = Path.GetFullPath(selectedFile);
+                            if (OperatingSystem.IsWindows())
+                            {
+                                // Open Explorer and select the file
+                                var psi = new System.Diagnostics.ProcessStartInfo
+                                {
+                                    FileName = "explorer",
+                                    Arguments = $"/select,\"{absFile}\"",
+                                    UseShellExecute = true
+                                };
+                                System.Diagnostics.Process.Start(psi);
+                            }
+                            else if (OperatingSystem.IsMacOS())
+                            {
+                                // Open Finder and select the file (must use absolute path, double quotes for spaces)
+                                var psi = new System.Diagnostics.ProcessStartInfo
+                                {
+                                    FileName = "open",
+                                    Arguments = $"-R \"{absFile}\"",
+                                    UseShellExecute = true
+                                };
+                                var process = System.Diagnostics.Process.Start(psi);
+                                if (process == null)
+                                {
+                                    AnsiConsole.MarkupLine($"[red]Failed to start Finder process for: {absFile}[/]");
+                                }
+                            }
+                            else if (OperatingSystem.IsLinux())
+                            {
+                                // Try to open the folder with the default file manager
+                                var absDir = Path.GetFullPath(directory);
+                                var psi = new System.Diagnostics.ProcessStartInfo
+                                {
+                                    FileName = "xdg-open",
+                                    Arguments = $"'{absDir.Replace("'", "'\\''")}'",
+                                    UseShellExecute = true
+                                };
+                                System.Diagnostics.Process.Start(psi);
+                            }
+                            else
+                            {
+                                AnsiConsole.MarkupLine("[yellow]Cannot open folder: unsupported OS.[/]");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            AnsiConsole.MarkupLine($"[red]Failed to open folder: {ex.Message}[/]");
+                        }
+                    }
+                }
             }
         }
         else
         {
-            Console.WriteLine("No duplicate files found.");
+            AnsiConsole.MarkupLine("[green]No duplicate files found.[/]");
         }
         
         // FUTURE: Identify file types, where possible for querying.
