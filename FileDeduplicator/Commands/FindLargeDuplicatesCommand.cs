@@ -12,9 +12,10 @@ public sealed class FindLargeDuplicatesCommand : Command<FindLargeDuplicatesComm
 
     public sealed class Settings : CommandSettings
     {
+        // NOTE: [developers] When running via dotnet tool for multiple directories, the --path option will avoid errors about multiple projects being called.
         [CommandOption("-p|--path <PATH>")]
-        [Description("The path to start scanning files (defaults to the current directory if not provided).")]
-        public required string StartPath { get; set; }
+        [Description("One or more paths to scan for files (defaults to the current directory if not provided). Specify multiple times: -d /path1 -d /path2")]
+        public string[]? Paths { get; set; }
 
         [CommandOption("-s|--min-size <SIZE>")]
         [Description("Minimum file size in bytes to consider (defaults to 1 GB). Supports suffixes: KB, MB, GB, TB (e.g., '500MB', '2GB').")]
@@ -25,23 +26,26 @@ public sealed class FindLargeDuplicatesCommand : Command<FindLargeDuplicatesComm
 
     public override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
-        var startPath = string.IsNullOrWhiteSpace(settings.StartPath)
-            ? Environment.CurrentDirectory
-            : settings.StartPath;
+        var paths = settings.Paths is { Length: > 0 }
+            ? settings.Paths.Select(p => string.IsNullOrWhiteSpace(p) ? Environment.CurrentDirectory : p).ToArray()
+            : [Environment.CurrentDirectory];
 
-        if (!Directory.Exists(startPath))
+        foreach (var path in paths)
         {
-            AnsiConsole.MarkupLine($"[red]Error:[/] Directory not found: {Markup.Escape(startPath)}");
-            return 1;
+            if (!Directory.Exists(path))
+            {
+                AnsiConsole.MarkupLine($"[red]Error:[/] Directory not found: {Markup.Escape(path)}");
+                return 1;
+            }
         }
 
-        AnsiConsole.MarkupLine($"Scanning for large duplicate files in: [blue]{Markup.Escape(startPath)}[/]");
+        AnsiConsole.MarkupLine($"Scanning for large duplicate files in: [blue]{Markup.Escape(string.Join(", ", paths))}[/]");
         AnsiConsole.MarkupLine($"Minimum file size: [blue]{FormatFileSize(settings.MinSizeBytes)}[/]");
         AnsiConsole.WriteLine();
 
         var scanner = new FileScanner();
-        var fileDetailsList = scanner.ScanDirectoryForLargeDuplicates(
-            startPath,
+        var fileDetailsList = scanner.ScanDirectoriesForLargeDuplicates(
+            paths,
             settings.MinSizeBytes,
             onStatus: message => AnsiConsole.MarkupLine($"[grey]{Markup.Escape(message)}[/]")
         );

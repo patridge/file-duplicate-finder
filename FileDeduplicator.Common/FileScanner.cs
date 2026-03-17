@@ -43,16 +43,28 @@ namespace FileDeduplicator.Common
         /// </summary>
         public List<FileDetails> ScanDirectoryForLargeDuplicates(string startPath, long minSizeBytes, Action<string>? onStatus = null)
         {
-            var currentFilePaths = Directory.GetFiles(startPath, "*", SearchOption.AllDirectories);
+            return ScanDirectoriesForLargeDuplicates([startPath], minSizeBytes, onStatus);
+        }
 
-            // Phase 1: Collect file info and filter by minimum size
+        /// <summary>
+        /// Scans multiple directories for duplicate files at or above a minimum size.
+        /// Candidates from all paths are combined before size-grouping and hashing,
+        /// so duplicates across different directories are detected.
+        /// </summary>
+        public List<FileDetails> ScanDirectoriesForLargeDuplicates(string[] startPaths, long minSizeBytes, Action<string>? onStatus = null)
+        {
+            // Phase 1: Collect file info from all paths and filter by minimum size
             var candidates = new List<(string FilePath, FileInfo Info)>();
-            foreach (var filePath in currentFilePaths)
+            foreach (var startPath in startPaths)
             {
-                var fileInfo = new FileInfo(filePath);
-                if (fileInfo.Length >= minSizeBytes)
+                var currentFilePaths = Directory.GetFiles(startPath, "*", SearchOption.AllDirectories);
+                foreach (var filePath in currentFilePaths)
                 {
-                    candidates.Add((filePath, fileInfo));
+                    var fileInfo = new FileInfo(filePath);
+                    if (fileInfo.Length >= minSizeBytes)
+                    {
+                        candidates.Add((filePath, fileInfo));
+                    }
                 }
             }
 
