@@ -21,9 +21,9 @@ internal class Program
             config.AddCommand<CompareCommand>("compare")
                 .WithExample("compare", "./path/to/file1.txt", "./path/to/file2.txt");
 
-            config.AddCommand<FindLargeDuplicatesCommand>("find-large-duplicates")
-                .WithExample("find-large-duplicates", "--path", "./path/to/files-to-scan")
-                .WithExample("find-large-duplicates", "--path", "./path/to/files-to-scan", "--min-size", "500MB");
+            config.AddCommand<FindDuplicatesCommand>("find-duplicates")
+                .WithExample("find-duplicates", "--path", "./path/to/files-to-scan")
+                .WithExample("find-duplicates", "--path", "./path/to/files-to-scan", "--min-size", "500MB");
             
             // TODO: Offer `find` command to locate duplicates of a given starting file.
             // config.AddCommand<FindCommand>("find")

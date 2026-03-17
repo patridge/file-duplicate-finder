@@ -96,24 +96,24 @@ public class FileScannerTests
 
     #endregion
 
-    #region ScanDirectoryForLargeDuplicates tests
+    #region ScanDirectoryForDuplicates tests
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_FiltersOutSmallFiles()
+    public void ScanDirectoryForDuplicates_FiltersOutSmallFiles()
     {
         CreateFile("small.txt", 50);
         CreateFile("small2.txt", 50);
         CreateFile("large.bin", 1000);
 
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 100);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100);
 
         // large.bin is the only file >= 100 bytes but has no size-match partner, so no results
         Assert.That(results, Is.Empty);
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_ReturnsDuplicatesAboveMinSize()
+    public void ScanDirectoryForDuplicates_ReturnsDuplicatesAboveMinSize()
     {
         var content = new byte[500];
         Random.Shared.NextBytes(content);
@@ -122,27 +122,27 @@ public class FileScannerTests
         CreateFile("small.txt", 10);
 
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 100);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100);
 
         Assert.That(results, Has.Count.EqualTo(2));
         Assert.That(results[0].Sha256Hash.ToHexString(), Is.EqualTo(results[1].Sha256Hash.ToHexString()));
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_ExcludesUniqueLargeFiles()
+    public void ScanDirectoryForDuplicates_ExcludesUniqueFiles()
     {
-        // Two different large files with different sizes — no duplicates
+        // Two different files with different sizes — no duplicates
         CreateFile("unique1.bin", 500);
         CreateFile("unique2.bin", 600);
 
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 100);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100);
 
         Assert.That(results, Is.Empty);
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_SameSizeDifferentContent_NotReturned()
+    public void ScanDirectoryForDuplicates_SameSizeDifferentContent_NotReturned()
     {
         // Two files with same size but different content are not duplicates
         var content1 = new byte[500];
@@ -153,13 +153,13 @@ public class FileScannerTests
         CreateFileWithContent("file2.bin", content2);
 
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 100);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100);
 
         Assert.That(results, Is.Empty);
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_MinSizeZero_IncludesAllSizeMatchedFiles()
+    public void ScanDirectoryForDuplicates_MinSizeZero_IncludesAllSizeMatchedFiles()
     {
         var content = new byte[1];
         content[0] = 0x42;
@@ -169,22 +169,22 @@ public class FileScannerTests
         CreateFileWithContent("empty2.bin", Array.Empty<byte>());
 
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 0);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 0);
 
         Assert.That(results, Has.Count.EqualTo(4));
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_EmptyDirectory_ReturnsEmpty()
+    public void ScanDirectoryForDuplicates_EmptyDirectory_ReturnsEmpty()
     {
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 100);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100);
 
         Assert.That(results, Is.Empty);
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_ScansSubdirectories()
+    public void ScanDirectoryForDuplicates_ScansSubdirectories()
     {
         var content = new byte[200];
         Random.Shared.NextBytes(content);
@@ -192,13 +192,13 @@ public class FileScannerTests
         CreateFileWithContent("top/sub/dup2.bin", content);
 
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 100);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100);
 
         Assert.That(results, Has.Count.EqualTo(2));
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_OnStatusCallback_IsInvoked()
+    public void ScanDirectoryForDuplicates_OnStatusCallback_IsInvoked()
     {
         var content = new byte[200];
         Random.Shared.NextBytes(content);
@@ -207,7 +207,7 @@ public class FileScannerTests
 
         var messages = new System.Collections.Generic.List<string>();
         var scanner = new FileScanner();
-        scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 100, onStatus: msg => messages.Add(msg));
+        scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100, onStatus: msg => messages.Add(msg));
 
         Assert.That(messages, Has.Count.GreaterThanOrEqualTo(2));
         Assert.That(messages[0], Does.Contain("file(s) at or above"));
@@ -215,7 +215,7 @@ public class FileScannerTests
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_ThreeDuplicates_ReturnsAll()
+    public void ScanDirectoryForDuplicates_ThreeDuplicates_ReturnsAll()
     {
         var content = new byte[300];
         Random.Shared.NextBytes(content);
@@ -224,7 +224,7 @@ public class FileScannerTests
         CreateFileWithContent("dup3.bin", content);
 
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 100);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100);
 
         Assert.That(results, Has.Count.EqualTo(3));
         var hashes = results.Select(r => r.Sha256Hash.ToHexString()).Distinct().ToList();
@@ -232,7 +232,7 @@ public class FileScannerTests
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_MultipleDuplicateGroups()
+    public void ScanDirectoryForDuplicates_MultipleDuplicateGroups()
     {
         var contentA = new byte[400];
         var contentB = new byte[400];
@@ -247,7 +247,7 @@ public class FileScannerTests
         CreateFileWithContent("groupB_2.bin", contentB);
 
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 100);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100);
 
         Assert.That(results, Has.Count.EqualTo(4));
         var groups = results.GroupBy(r => r.Sha256Hash.ToHexString()).ToList();
@@ -255,7 +255,7 @@ public class FileScannerTests
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_MinSizeAtExactBoundary_IncludesFile()
+    public void ScanDirectoryForDuplicates_MinSizeAtExactBoundary_IncludesFile()
     {
         var content = new byte[100];
         Random.Shared.NextBytes(content);
@@ -263,13 +263,13 @@ public class FileScannerTests
         CreateFileWithContent("exact2.bin", content);
 
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 100);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100);
 
         Assert.That(results, Has.Count.EqualTo(2));
     }
 
     [Test]
-    public void ScanDirectoryForLargeDuplicates_MinSizeJustAboveBoundary_ExcludesFile()
+    public void ScanDirectoryForDuplicates_MinSizeJustAboveBoundary_ExcludesFile()
     {
         var content = new byte[100];
         Random.Shared.NextBytes(content);
@@ -277,7 +277,7 @@ public class FileScannerTests
         CreateFileWithContent("borderline2.bin", content);
 
         var scanner = new FileScanner();
-        var results = scanner.ScanDirectoryForLargeDuplicates(_tempDir, minSizeBytes: 101);
+        var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 101);
 
         Assert.That(results, Is.Empty);
     }

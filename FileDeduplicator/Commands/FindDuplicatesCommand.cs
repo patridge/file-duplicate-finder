@@ -5,10 +5,10 @@ using Spectre.Console.Cli;
 
 namespace FileDeduplicator.Commands;
 
-[Description("Find duplicates of large files, filtering by minimum file size.")]
-public sealed class FindLargeDuplicatesCommand : Command<FindLargeDuplicatesCommand.Settings>
+[Description("Find duplicate files, optionally filtering by minimum file size.")]
+public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settings>
 {
-    private const long DefaultMinSizeBytes = 1L * 1024 * 1024 * 1024; // 1 GB
+    private const long DefaultMinSizeBytes = 0L;
 
     public sealed class Settings : CommandSettings
     {
@@ -18,7 +18,7 @@ public sealed class FindLargeDuplicatesCommand : Command<FindLargeDuplicatesComm
         public string[]? Paths { get; set; }
 
         [CommandOption("-s|--min-size <SIZE>")]
-        [Description("Minimum file size in bytes to consider (defaults to 1 GB). Supports suffixes: KB, MB, GB, TB (e.g., '500MB', '2GB').")]
+        [Description("Minimum file size in bytes to consider (defaults to 0, no filter). Supports suffixes: KB, MB, GB, TB (e.g., '500MB', '2GB').")]
         [TypeConverter(typeof(FileSizeConverter))]
         [DefaultValue(DefaultMinSizeBytes)]
         public long MinSizeBytes { get; set; }
@@ -39,12 +39,13 @@ public sealed class FindLargeDuplicatesCommand : Command<FindLargeDuplicatesComm
             }
         }
 
-        AnsiConsole.MarkupLine($"Scanning for large duplicate files in: [blue]{Markup.Escape(string.Join(", ", paths))}[/]");
-        AnsiConsole.MarkupLine($"Minimum file size: [blue]{FormatFileSize(settings.MinSizeBytes)}[/]");
+        AnsiConsole.MarkupLine($"Scanning for duplicate files in: [blue]{Markup.Escape(string.Join(", ", paths))}[/]");
+        if (settings.MinSizeBytes > 0)
+            AnsiConsole.MarkupLine($"Minimum file size: [blue]{FormatFileSize(settings.MinSizeBytes)}[/]");
         AnsiConsole.WriteLine();
 
         var scanner = new FileScanner();
-        var fileDetailsList = scanner.ScanDirectoriesForLargeDuplicates(
+        var fileDetailsList = scanner.ScanDirectoriesForDuplicates(
             paths,
             settings.MinSizeBytes,
             onStatus: message => AnsiConsole.MarkupLine($"[grey]{Markup.Escape(message)}[/]")
@@ -57,7 +58,7 @@ public sealed class FindLargeDuplicatesCommand : Command<FindLargeDuplicatesComm
 
         if (duplicateGroups.Length == 0)
         {
-            AnsiConsole.MarkupLine("[green]No duplicate large files found.[/]");
+            AnsiConsole.MarkupLine("[green]No duplicate files found.[/]");
             return 0;
         }
 

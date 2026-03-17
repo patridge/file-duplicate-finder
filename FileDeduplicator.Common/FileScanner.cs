@@ -41,17 +41,17 @@ namespace FileDeduplicator.Common
         /// Scans a directory for duplicate files at or above a minimum size.
         /// Optimized to only compute hashes for files that share a size with at least one other file.
         /// </summary>
-        public List<FileDetails> ScanDirectoryForLargeDuplicates(string startPath, long minSizeBytes, Action<string>? onStatus = null)
+        public List<FileDetails> ScanDirectoryForDuplicates(string startPath, long minSizeBytes, Action<string>? onStatus = null)
         {
-            return ScanDirectoriesForLargeDuplicates([startPath], minSizeBytes, onStatus);
+            return ScanDirectoriesForDuplicates([startPath], minSizeBytes, onStatus);
         }
 
         /// <summary>
-        /// Scans multiple directories for duplicate files at or above a minimum size.
+        /// Scans multiple directories for duplicate files, optionally filtering by minimum size.
         /// Candidates from all paths are combined before size-grouping and hashing,
         /// so duplicates across different directories are detected.
         /// </summary>
-        public List<FileDetails> ScanDirectoriesForLargeDuplicates(string[] startPaths, long minSizeBytes, Action<string>? onStatus = null)
+        public List<FileDetails> ScanDirectoriesForDuplicates(string[] startPaths, long minSizeBytes, Action<string>? onStatus = null)
         {
             // Phase 1: Collect file info from all paths and filter by minimum size
             var candidates = new List<(string FilePath, FileInfo Info)>();
