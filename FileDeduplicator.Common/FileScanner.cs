@@ -106,6 +106,107 @@ namespace FileDeduplicator.Common
             return duplicates;
         }
 
+        /// <summary>
+        /// Scans multiple directories and returns groups of duplicate files.
+        /// When comparers are provided, uses them for content-based equivalence (e.g., ignoring metadata).
+        /// When no comparers are provided, groups by SHA-256 hash (exact match).
+        /// </summary>
+        public List<List<FileDetails>> ScanDirectoriesForDuplicateGroups(
+            string[] startPaths, long minSizeBytes,
+            IFileComparer[]? comparers = null,
+            Action<string>? onStatus = null)
+        {
+            // Phase 1: Collect file info from all paths and filter by minimum size
+            var candidates = new List<(string FilePath, FileInfo Info)>();
+            foreach (var startPath in startPaths)
+            {
+                var currentFilePaths = Directory.GetFiles(startPath, "*", SearchOption.AllDirectories);
+                foreach (var filePath in currentFilePaths)
+                {
+                    var fileInfo = new FileInfo(filePath);
+                    if (fileInfo.Length >= minSizeBytes)
+                    {
+                        candidates.Add((filePath, fileInfo));
+                    }
+                }
+            }
+
+            onStatus?.Invoke($"Found {candidates.Count} file(s) at or above {FormatFileSize(minSizeBytes)}.");
+
+            // Phase 2: Group by file size — only files sharing a size can be duplicates
+            var sizeGroups = candidates
+                .GroupBy(c => c.Info.Length)
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            var filesToProcess = sizeGroups.SelectMany(g => g).ToList();
+            onStatus?.Invoke($"Processing {filesToProcess.Count} file(s) with matching sizes...");
+
+            // Phase 3: Hash all size-matched files and build FileDetails
+            var fileDetailsByPath = new Dictionary<string, FileDetails>();
+            foreach (var (filePath, fileInfo) in filesToProcess)
+            {
+                var hashBytes = FileHelpers.GetFileSha256(filePath);
+                fileDetailsByPath[filePath] = new FileDetails
+                {
+                    DetailsRetrieved = DateTime.UtcNow,
+                    FilePath = filePath,
+                    Sha256Hash = hashBytes,
+                    FileSize = fileInfo.Length,
+                    LastModified = fileInfo.LastWriteTimeUtc,
+                    Created = fileInfo.CreationTimeUtc,
+                    LastAccessed = fileInfo.LastAccessTimeUtc,
+                };
+            }
+
+            // Phase 4: Group duplicates
+            if (comparers is { Length: > 0 })
+            {
+                onStatus?.Invoke("Using content comparers for equivalence detection...");
+                var allGroups = new List<List<FileDetails>>();
+
+                foreach (var sizeGroup in sizeGroups)
+                {
+                    var filesInGroup = sizeGroup
+                        .Select(c => fileDetailsByPath[c.FilePath])
+                        .ToList();
+
+                    // Build equivalence groups using pairwise comparison
+                    var groups = new List<List<FileDetails>>();
+                    foreach (var file in filesInGroup)
+                    {
+                        bool added = false;
+                        foreach (var group in groups)
+                        {
+                            var comparer = comparers.FirstOrDefault(c =>
+                                c.CanCompare(file.FilePath) && c.CanCompare(group[0].FilePath));
+                            if (comparer != null && comparer.AreFilesEquivalent(file.FilePath, group[0].FilePath))
+                            {
+                                group.Add(file);
+                                added = true;
+                                break;
+                            }
+                        }
+                        if (!added)
+                            groups.Add(new List<FileDetails> { file });
+                    }
+
+                    allGroups.AddRange(groups.Where(g => g.Count > 1));
+                }
+
+                return allGroups;
+            }
+            else
+            {
+                // Hash-based grouping (exact match)
+                return fileDetailsByPath.Values
+                    .GroupBy(f => f.Sha256Hash.ToHexString())
+                    .Where(g => g.Count() > 1)
+                    .Select(g => g.ToList())
+                    .ToList();
+            }
+        }
+
         private static string FormatFileSize(long bytes)
         {
             string[] suffixes = ["B", "KB", "MB", "GB", "TB"];

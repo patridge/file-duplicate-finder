@@ -22,6 +22,11 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         [TypeConverter(typeof(FileSizeConverter))]
         [DefaultValue(DefaultMinSizeBytes)]
         public long MinSizeBytes { get; set; }
+
+        [CommandOption("-m|--allow-metadata-diffs")]
+        [Description("Allow metadata differences when comparing files (e.g., ignore ID3 tags, EXIF data). Files are compared by content only.")]
+        [DefaultValue(false)]
+        public bool AllowMetadataDiffs { get; set; }
     }
 
     public override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -42,19 +47,24 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         AnsiConsole.MarkupLine($"Scanning for duplicate files in: [blue]{Markup.Escape(string.Join(", ", paths))}[/]");
         if (settings.MinSizeBytes > 0)
             AnsiConsole.MarkupLine($"Minimum file size: [blue]{FormatFileSize(settings.MinSizeBytes)}[/]");
+        if (settings.AllowMetadataDiffs)
+            AnsiConsole.MarkupLine("[blue]Allowing metadata differences[/]");
         AnsiConsole.WriteLine();
 
         var scanner = new FileScanner();
-        var fileDetailsList = scanner.ScanDirectoriesForDuplicates(
+        IFileComparer[]? comparers = settings.AllowMetadataDiffs
+            ? [new AudioFileComparer(), new ImageFileComparer(), new BinaryFileComparer { IgnoreMetadata = true }]
+            : null;
+
+        var duplicateGroups = scanner.ScanDirectoriesForDuplicateGroups(
             paths,
             settings.MinSizeBytes,
+            comparers,
             onStatus: message => AnsiConsole.MarkupLine($"[grey]{Markup.Escape(message)}[/]")
-        );
-
-        var duplicateGroups = fileDetailsList
-            .GroupBy(fd => fd.Sha256Hash.ToHexString())
-            .OrderByDescending(g => g.First().FileSize)
-            .ToArray();
+        )
+        .Select(g => (Key: g[0].Sha256Hash.ToHexString(), Files: g))
+        .OrderByDescending(g => g.Files[0].FileSize)
+        .ToArray();
 
         if (duplicateGroups.Length == 0)
         {
@@ -62,7 +72,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             return 0;
         }
 
-        var totalWastedBytes = duplicateGroups.Sum(g => g.First().FileSize * (g.Count() - 1));
+        var totalWastedBytes = duplicateGroups.Sum(g => g.Files[0].FileSize * (g.Files.Count - 1));
         AnsiConsole.MarkupLine($"[green]Found {duplicateGroups.Length} duplicate group(s)![/]");
         AnsiConsole.MarkupLine($"[yellow]Potential space savings: {FormatFileSize(totalWastedBytes)}[/]");
         AnsiConsole.WriteLine();
@@ -80,7 +90,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             var labelMap = new Dictionary<string, string>();
             foreach (var g in pageGroups)
             {
-                var files = g.ToList();
+                var files = g.Files;
                 var fileNames = files.Select(f => Path.GetFileName(f.FilePath)).Distinct().ToList();
                 string prefix;
                 if (fileNames.Count == 1)
@@ -97,7 +107,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
 
                 var sizeLabel = FormatFileSize(files[0].FileSize);
                 var hashEscaped = g.Key.Replace("[", "[[").Replace("]", "]]");
-                var label = $"{prefix} ({sizeLabel}, {g.Count()} files) [[{hashEscaped}]]";
+                var label = $"{prefix} ({sizeLabel}, {g.Files.Count} files) [[{hashEscaped}]]";
                 labelMap[label] = g.Key;
             }
 
@@ -151,7 +161,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                 table.AddColumn(new TableColumn("[bold]Size[/]").RightAligned());
                 table.AddColumn(new TableColumn("[bold]Path[/]").LeftAligned());
 
-                foreach (var file in selectedGroup)
+                foreach (var file in selectedGroup.Files)
                 {
                     var fileName = Path.GetFileName(file.FilePath);
                     var directoryPath = Path.GetDirectoryName(file.FilePath) ?? string.Empty;
@@ -160,7 +170,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
 
                 AnsiConsole.Write(table);
 
-                var fileChoices = selectedGroup.Select(f => f.FilePath).ToList();
+                var fileChoices = selectedGroup.Files.Select(f => f.FilePath).ToList();
                 fileChoices.Add("[yellow]Back[/]");
                 var selectedFile = AnsiConsole.Prompt(
                     new SelectionPrompt<string>()
