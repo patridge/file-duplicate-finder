@@ -56,12 +56,49 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             ? [new AudioFileComparer(), new ImageFileComparer(), new BinaryFileComparer { IgnoreMetadata = true }]
             : null;
 
-        var duplicateGroups = scanner.ScanDirectoriesForDuplicateGroups(
-            paths,
-            settings.MinSizeBytes,
-            comparers,
-            onStatus: message => AnsiConsole.MarkupLine($"[grey]{Markup.Escape(message)}[/]")
-        )
+        List<List<FileDetails>>? rawGroups = null;
+
+        AnsiConsole.Progress()
+            .AutoClear(true)
+            .Columns(
+                new TaskDescriptionColumn { Alignment = Justify.Left },
+                new ProgressBarColumn(),
+                new PercentageColumn(),
+                new SpinnerColumn()
+            )
+            .Start(ctx =>
+            {
+                var task = ctx.AddTask("Discovering files...", autoStart: true, maxValue: 100);
+                task.IsIndeterminate = true;
+
+                rawGroups = scanner.ScanDirectoriesForDuplicateGroups(
+                    paths,
+                    settings.MinSizeBytes,
+                    comparers,
+                    onStatus: message =>
+                    {
+                        task.Description = Markup.Escape(message);
+                    },
+                    onProgress: (pct, message) =>
+                    {
+                        if (pct < 0)
+                        {
+                            // Discovery phase (indeterminate) — message is a status string, not a path
+                            task.IsIndeterminate = true;
+                            task.Description = Markup.Escape(message.Length > 80 ? message[..77] + "..." : message);
+                        }
+                        else
+                        {
+                            // Hashing phase (determinate) — message is a file path
+                            task.IsIndeterminate = false;
+                            task.Value = pct;
+                            task.Description = Markup.Escape($"Hashing: {ShortenPath(message, 60)}");
+                        }
+                    }
+                );
+            });
+
+        var duplicateGroups = (rawGroups ?? [])
         .Select(g => (Key: g[0].Sha256Hash.ToHexString(), Files: g))
         .OrderByDescending(g => g.Files[0].FileSize)
         .ToArray();
@@ -251,6 +288,20 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             suffixIndex++;
         }
         return $"{size:0.##} {suffixes[suffixIndex]}";
+    }
+
+    private static string ShortenPath(string filePath, int maxLength)
+    {
+        if (string.IsNullOrEmpty(filePath) || filePath.Length <= maxLength)
+            return filePath;
+        var fileName = Path.GetFileName(filePath);
+        if (string.IsNullOrEmpty(fileName) || fileName.Length >= maxLength - 4)
+            return "..." + filePath[^Math.Min(maxLength - 3, filePath.Length)..];
+        var remaining = maxLength - fileName.Length - 5; // 5 = "/..." + separator
+        if (remaining <= 0)
+            return "..." + Path.DirectorySeparatorChar + fileName;
+        var dir = Path.GetDirectoryName(filePath) ?? "";
+        return dir[..Math.Min(remaining, dir.Length)] + "/..." + Path.DirectorySeparatorChar + fileName;
     }
 }
 

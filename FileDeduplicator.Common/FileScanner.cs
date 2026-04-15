@@ -51,19 +51,25 @@ namespace FileDeduplicator.Common
         /// Candidates from all paths are combined before size-grouping and hashing,
         /// so duplicates across different directories are detected.
         /// </summary>
-        public List<FileDetails> ScanDirectoriesForDuplicates(string[] startPaths, long minSizeBytes, Action<string>? onStatus = null)
+        public List<FileDetails> ScanDirectoriesForDuplicates(string[] startPaths, long minSizeBytes, Action<string>? onStatus = null, Action<double, string>? onProgress = null)
         {
             // Phase 1: Collect file info from all paths and filter by minimum size
             var candidates = new List<(string FilePath, FileInfo Info)>();
             foreach (var startPath in startPaths)
             {
-                var currentFilePaths = Directory.GetFiles(startPath, "*", SearchOption.AllDirectories);
-                foreach (var filePath in currentFilePaths)
+                onStatus?.Invoke($"Discovering files in {startPath}...");
+                foreach (var filePath in Directory.EnumerateFiles(startPath, "*", SearchOption.AllDirectories))
                 {
                     var fileInfo = new FileInfo(filePath);
                     if (fileInfo.Length >= minSizeBytes)
                     {
                         candidates.Add((filePath, fileInfo));
+                    }
+
+                    if (candidates.Count % 500 == 0)
+                    {
+                        var dir = Path.GetDirectoryName(filePath) ?? filePath;
+                        onProgress?.Invoke(-1, $"Discovering files... {candidates.Count} found so far ({dir})");
                     }
                 }
             }
@@ -81,8 +87,13 @@ namespace FileDeduplicator.Common
 
             // Phase 3: Hash only the files that have size-matches
             var hashedFiles = new List<FileDetails>();
+            int processedCount = 0;
             foreach (var (filePath, fileInfo) in filesToHash)
             {
+                processedCount++;
+                double pct = (double)processedCount / filesToHash.Count * 100;
+                onProgress?.Invoke(pct, filePath);
+
                 var hashBytes = FileHelpers.GetFileSha256(filePath);
                 hashedFiles.Add(new FileDetails
                 {
@@ -114,19 +125,26 @@ namespace FileDeduplicator.Common
         public List<List<FileDetails>> ScanDirectoriesForDuplicateGroups(
             string[] startPaths, long minSizeBytes,
             IFileComparer[]? comparers = null,
-            Action<string>? onStatus = null)
+            Action<string>? onStatus = null,
+            Action<double, string>? onProgress = null)
         {
             // Phase 1: Collect file info from all paths and filter by minimum size
             var candidates = new List<(string FilePath, FileInfo Info)>();
             foreach (var startPath in startPaths)
             {
-                var currentFilePaths = Directory.GetFiles(startPath, "*", SearchOption.AllDirectories);
-                foreach (var filePath in currentFilePaths)
+                onStatus?.Invoke($"Discovering files in {startPath}...");
+                foreach (var filePath in Directory.EnumerateFiles(startPath, "*", SearchOption.AllDirectories))
                 {
                     var fileInfo = new FileInfo(filePath);
                     if (fileInfo.Length >= minSizeBytes)
                     {
                         candidates.Add((filePath, fileInfo));
+                    }
+
+                    if (candidates.Count % 500 == 0)
+                    {
+                        var dir = Path.GetDirectoryName(filePath) ?? filePath;
+                        onProgress?.Invoke(-1, $"Discovering files... {candidates.Count} found so far ({dir})");
                     }
                 }
             }
@@ -144,8 +162,13 @@ namespace FileDeduplicator.Common
 
             // Phase 3: Hash all size-matched files and build FileDetails
             var fileDetailsByPath = new Dictionary<string, FileDetails>();
+            int processedCount = 0;
             foreach (var (filePath, fileInfo) in filesToProcess)
             {
+                processedCount++;
+                double pct = (double)processedCount / filesToProcess.Count * 100;
+                onProgress?.Invoke(pct, filePath);
+
                 var hashBytes = FileHelpers.GetFileSha256(filePath);
                 fileDetailsByPath[filePath] = new FileDetails
                 {

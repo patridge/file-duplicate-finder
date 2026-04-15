@@ -210,8 +210,8 @@ public class FileScannerTests
         scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 100, onStatus: msg => messages.Add(msg));
 
         Assert.That(messages, Has.Count.GreaterThanOrEqualTo(2));
-        Assert.That(messages[0], Does.Contain("file(s) at or above"));
-        Assert.That(messages[1], Does.Contain("Computing hashes"));
+        Assert.That(messages, Has.Some.Contain("file(s) at or above"));
+        Assert.That(messages, Has.Some.Contain("Computing hashes"));
     }
 
     [Test]
@@ -280,6 +280,60 @@ public class FileScannerTests
         var results = scanner.ScanDirectoryForDuplicates(_tempDir, minSizeBytes: 101);
 
         Assert.That(results, Is.Empty);
+    }
+
+    #endregion
+
+    #region Bracket / special character paths
+
+    [Test]
+    public void ScanDirectoriesForDuplicateGroups_BracketInFolderName_FindsDuplicates()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("[Series] Books/file1.bin", content);
+        CreateFileWithContent("[Series] Books/file1_copy.bin", content);
+
+        var scanner = new FileScanner();
+        var groups = scanner.ScanDirectoriesForDuplicateGroups(
+            [_tempDir], minSizeBytes: 0);
+
+        Assert.That(groups, Has.Count.EqualTo(1));
+        Assert.That(groups[0], Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ScanDirectoriesForDuplicateGroups_BracketInFolderName_ProgressCallbackContainsBrackets()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("[Series] Books/file1.bin", content);
+        CreateFileWithContent("[Series] Books/file1_copy.bin", content);
+
+        var progressMessages = new System.Collections.Generic.List<string>();
+        var scanner = new FileScanner();
+        scanner.ScanDirectoriesForDuplicateGroups(
+            [_tempDir], minSizeBytes: 0,
+            onProgress: (pct, message) => progressMessages.Add(message));
+
+        // The hashing phase should report paths that include the bracket folder name
+        Assert.That(progressMessages, Has.Some.Contain("[Series]"));
+    }
+
+    [Test]
+    public void ScanDirectoriesForDuplicates_BracketInFolderName_FindsDuplicates()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("[Backup] Photos/img.bin", content);
+        CreateFileWithContent("[Backup] Photos/img_copy.bin", content);
+
+        var scanner = new FileScanner();
+        var results = scanner.ScanDirectoriesForDuplicates(
+            [_tempDir], minSizeBytes: 0);
+
+        Assert.That(results, Has.Count.EqualTo(2));
+        Assert.That(results, Has.All.Matches<FileDetails>(f => f.FilePath.Contains("[Backup]")));
     }
 
     #endregion
