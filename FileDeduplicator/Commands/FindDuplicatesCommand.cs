@@ -179,7 +179,9 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                 prompt.AddChoice("[blue]Prev Page[/]");
             }
             foreach (var label in labelMap.Keys)
+            {
                 prompt.AddChoice(label);
+            }
             if (currentPage < totalPages - 1)
             {
                 prompt.AddChoice("[blue]Next Page[/]");
