@@ -22,11 +22,13 @@ Primary command. Scans one or more directories for duplicate files with an inter
 deduper find-duplicates --path /path/to/scan
 deduper find-duplicates --path /path1 --path /path2 --min-size 500MB
 deduper find-duplicates --path /path/to/scan --allow-metadata-diffs
+deduper find-duplicates --path /path/to/scan --exclude /path/to/scan/skip-this
 ```
 
 Options:
 
 * `-p|--path` — Directories to scan (repeatable, defaults to current directory)
+* `-x|--exclude` — Subdirectories to skip (repeatable)
 * `-s|--min-size` — Minimum file size filter, supports suffixes: KB, MB, GB, TB
 * `-m|--allow-metadata-diffs` — Ignore metadata differences (ID3 tags, EXIF data) when comparing
 

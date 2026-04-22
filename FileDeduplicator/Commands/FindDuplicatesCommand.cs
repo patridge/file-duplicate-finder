@@ -33,6 +33,10 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         [Description("Allow metadata differences when comparing files (e.g., ignore ID3 tags, EXIF data). Files are compared by content only.")]
         [DefaultValue(false)]
         public bool AllowMetadataDiffs { get; set; }
+
+        [CommandOption("-x|--exclude <PATH>")]
+        [Description("One or more paths to exclude from scanning. Specify multiple times: --exclude /path1/skip --exclude /path2/skip")]
+        public string[]? ExcludePaths { get; set; }
     }
 
     public override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -51,6 +55,13 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         }
 
         AnsiConsole.MarkupLine($"Scanning for duplicate files in: [blue]{Markup.Escape(string.Join(", ", paths))}[/]");
+        var excludePaths = settings.ExcludePaths is { Length: > 0 }
+            ? settings.ExcludePaths.Select(p => Path.GetFullPath(p)).ToArray()
+            : Array.Empty<string>();
+        if (excludePaths.Length > 0)
+        {
+            AnsiConsole.MarkupLine($"Excluding: [yellow]{Markup.Escape(string.Join(", ", excludePaths))}[/]");
+        }
         if (settings.MinSizeBytes > 0)
         {
             AnsiConsole.MarkupLine($"Minimum file size: [blue]{FormatFileSize(settings.MinSizeBytes)}[/]");
@@ -86,6 +97,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                     paths,
                     settings.MinSizeBytes,
                     comparers,
+                    excludePaths: excludePaths,
                     onStatus: message =>
                     {
                         task.Description = Markup.Escape(message);

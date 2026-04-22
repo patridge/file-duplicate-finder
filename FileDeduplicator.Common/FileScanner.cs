@@ -64,10 +64,15 @@ namespace FileDeduplicator.Common
         public List<List<FileDetails>> ScanDirectoriesForDuplicateGroups(
             string[] startPaths, long minSizeBytes,
             IFileComparer[]? comparers = null,
+            string[]? excludePaths = null,
             Action<string>? onStatus = null,
             Action<double, string>? onProgress = null,
             Action<string, string>? onFileSkipped = null)
         {
+            var normalizedExcludes = (excludePaths ?? [])
+                .Select(p => Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar)
+                .ToArray();
+
             // Phase 1: Collect file info from all paths and filter by minimum size
             var candidates = new List<(string FilePath, FileInfo Info)>();
             int totalFound = 0;
@@ -75,7 +80,7 @@ namespace FileDeduplicator.Common
             foreach (var startPath in startPaths)
             {
                 onStatus?.Invoke($"Discovering files in {startPath}...");
-                foreach (var filePath in Directory.EnumerateFiles(startPath, "*", SearchOption.AllDirectories))
+                foreach (var filePath in EnumerateFilesExcluding(startPath, normalizedExcludes))
                 {
                     totalFound++;
                     try
@@ -194,6 +199,48 @@ namespace FileDeduplicator.Common
                     .Where(g => g.Count() > 1)
                     .Select(g => g.ToList())
                     .ToList();
+            }
+        }
+
+        private static IEnumerable<string> EnumerateFilesExcluding(string rootPath, string[] normalizedExcludes)
+        {
+            var dirs = new Stack<string>();
+            dirs.Push(rootPath);
+            while (dirs.Count > 0)
+            {
+                var dir = dirs.Pop();
+                var fullDir = Path.GetFullPath(dir).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                if (normalizedExcludes.Any(ex => fullDir.StartsWith(ex, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                IEnumerable<string> files;
+                try
+                {
+                    files = Directory.EnumerateFiles(dir);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    continue;
+                }
+
+                foreach (var file in files)
+                {
+                    yield return file;
+                }
+
+                try
+                {
+                    foreach (var subDir in Directory.EnumerateDirectories(dir))
+                    {
+                        dirs.Push(subDir);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Skip inaccessible subdirectories
+                }
             }
         }
 
