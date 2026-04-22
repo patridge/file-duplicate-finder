@@ -178,8 +178,8 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                 {
                     var extensions = files.Select(f => Path.GetExtension(f.FilePath).ToLowerInvariant()).Distinct().ToList();
                     prefix = extensions.Count == 1 && !string.IsNullOrWhiteSpace(extensions[0])
-                        ? $"{extensions[0]} file"
-                        : "multiple files";
+                        ? $"[{extensions[0]} file]"
+                        : "[multiple files]";
                 }
 
                 var sizeLabel = FormatFileSize(files[0].FileSize);
