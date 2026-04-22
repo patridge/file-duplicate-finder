@@ -13,13 +13,13 @@ internal class Program
         {
             config.SetApplicationName("deduper");
             config.ValidateExamples();
-            config.AddExample("scan");
-
-            config.AddCommand<ScanCommand>("scan")
-                .WithExample("scan", "--path", "./path/to/files-to-scan");
 
             config.AddCommand<CompareCommand>("compare")
                 .WithExample("compare", "./path/to/file1.txt", "./path/to/file2.txt");
+
+            config.AddCommand<FindDuplicatesCommand>("find-duplicates")
+                .WithExample("find-duplicates", "--path", "./path/to/files-to-scan")
+                .WithExample("find-duplicates", "--path", "./path/to/files-to-scan", "--min-size", "500MB");
             
             // TODO: Offer `find` command to locate duplicates of a given starting file.
             // config.AddCommand<FindCommand>("find")
