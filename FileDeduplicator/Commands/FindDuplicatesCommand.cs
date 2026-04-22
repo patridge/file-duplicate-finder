@@ -162,7 +162,8 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
 
                 var sizeLabel = FormatFileSize(files[0].FileSize);
                 var prefixEscaped = prefix.Replace("[", "[[").Replace("]", "]]");
-                var hashEscaped = g.Key.Replace("[", "[[").Replace("]", "]]");
+                var hashShort = ShortenHash(g.Key);
+                var hashEscaped = hashShort.Replace("[", "[[").Replace("]", "]]");
                 var label = $"{prefixEscaped} ({sizeLabel}, {g.Files.Count} files) [[{hashEscaped}]]";
                 labelMap[label] = g.Key;
             }
@@ -227,7 +228,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             while (!backRequested)
             {
                 var table = new Table();
-                table.Title = new TableTitle($"[bold yellow]SHA-256: {selectedGroup.Key}[/]");
+                table.Title = new TableTitle($"[bold yellow]SHA-256: {ShortenHash(selectedGroup.Key)}[/]");
                 table.AddColumn(new TableColumn("[bold]Filename[/]").LeftAligned());
                 table.AddColumn(new TableColumn("[bold]Size[/]").RightAligned());
                 table.AddColumn(new TableColumn("[bold]Path[/]").LeftAligned());
@@ -434,6 +435,15 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                 AnsiConsole.MarkupLine($"[red]Failed to open folder: {Markup.Escape(ex.Message)}[/]");
             }
         }
+    }
+
+    private static string ShortenHash(string hash)
+    {
+        if (hash.Length <= 15)
+        {
+            return hash;
+        }
+        return $"{hash[..6]}\u2026{hash[^6..]}";
     }
 }
 
