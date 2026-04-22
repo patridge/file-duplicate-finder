@@ -24,13 +24,13 @@ public sealed class CompareCommand : Command<CompareCommand.Settings>
         // Validate file paths
         if (!File.Exists(settings.File1Path))
         {
-            AnsiConsole.MarkupLine($"[red]Error:[/] File not found: {settings.File1Path}");
+            AnsiConsole.MarkupLine($"[red]Error:[/] File not found: {Markup.Escape(settings.File1Path)}");
             return 1;
         }
 
         if (!File.Exists(settings.File2Path))
         {
-            AnsiConsole.MarkupLine($"[red]Error:[/] File not found: {settings.File2Path}");
+            AnsiConsole.MarkupLine($"[red]Error:[/] File not found: {Markup.Escape(settings.File2Path)}");
             return 1;
         }
 

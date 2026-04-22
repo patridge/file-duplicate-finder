@@ -46,9 +46,13 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
 
         AnsiConsole.MarkupLine($"Scanning for duplicate files in: [blue]{Markup.Escape(string.Join(", ", paths))}[/]");
         if (settings.MinSizeBytes > 0)
+        {
             AnsiConsole.MarkupLine($"Minimum file size: [blue]{FormatFileSize(settings.MinSizeBytes)}[/]");
+        }
         if (settings.AllowMetadataDiffs)
+        {
             AnsiConsole.MarkupLine("[blue]Allowing metadata differences[/]");
+        }
         AnsiConsole.WriteLine();
 
         var scanner = new FileScanner();
@@ -57,6 +61,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             : null;
 
         List<List<FileDetails>>? rawGroups = null;
+        var skippedFiles = new List<(string Path, string Error)>();
 
         AnsiConsole.Progress()
             .AutoClear(true)
@@ -94,6 +99,10 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                             task.Value = pct;
                             task.Description = Markup.Escape($"Hashing: {ShortenPath(message, 60)}");
                         }
+                    },
+                    onFileSkipped: (path, error) =>
+                    {
+                        skippedFiles.Add((path, error));
                     }
                 );
             });
@@ -106,12 +115,21 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         if (duplicateGroups.Length == 0)
         {
             AnsiConsole.MarkupLine("[green]No duplicate files found.[/]");
+            if (skippedFiles.Count > 0)
+            {
+                AnsiConsole.MarkupLine($"[yellow]{skippedFiles.Count} file(s) could not be scanned.[/]");
+                ShowSkippedFiles(skippedFiles);
+            }
             return 0;
         }
 
         var totalWastedBytes = duplicateGroups.Sum(g => g.Files[0].FileSize * (g.Files.Count - 1));
         AnsiConsole.MarkupLine($"[green]Found {duplicateGroups.Length} duplicate group(s)![/]");
         AnsiConsole.MarkupLine($"[yellow]Potential space savings: {FormatFileSize(totalWastedBytes)}[/]");
+        if (skippedFiles.Count > 0)
+        {
+            AnsiConsole.MarkupLine($"[yellow]{skippedFiles.Count} file(s) could not be scanned.[/]");
+        }
         AnsiConsole.WriteLine();
 
         const int pageSize = 10;
@@ -143,8 +161,9 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                 }
 
                 var sizeLabel = FormatFileSize(files[0].FileSize);
+                var prefixEscaped = prefix.Replace("[", "[[").Replace("]", "]]");
                 var hashEscaped = g.Key.Replace("[", "[[").Replace("]", "]]");
-                var label = $"{prefix} ({sizeLabel}, {g.Files.Count} files) [[{hashEscaped}]]";
+                var label = $"{prefixEscaped} ({sizeLabel}, {g.Files.Count} files) [[{hashEscaped}]]";
                 labelMap[label] = g.Key;
             }
 
@@ -156,11 +175,19 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                 .HighlightStyle("bold yellow");
 
             if (currentPage > 0)
+            {
                 prompt.AddChoice("[blue]Prev Page[/]");
+            }
             foreach (var label in labelMap.Keys)
                 prompt.AddChoice(label);
             if (currentPage < totalPages - 1)
+            {
                 prompt.AddChoice("[blue]Next Page[/]");
+            }
+            if (skippedFiles.Count > 0)
+            {
+                prompt.AddChoice($"[yellow]Skipped Files ({skippedFiles.Count})[/]");
+            }
             prompt.AddChoice("[red]Exit[/]");
 
             var selectedLabel = AnsiConsole.Prompt(prompt);
@@ -178,6 +205,11 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             if (selectedLabel == "[blue]Next Page[/]")
             {
                 if (currentPage < totalPages - 1) currentPage++;
+                continue;
+            }
+            if (selectedLabel == $"[yellow]Skipped Files ({skippedFiles.Count})[/]")
+            {
+                ShowSkippedFiles(skippedFiles);
                 continue;
             }
 
@@ -200,27 +232,33 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
 
                 foreach (var file in selectedGroup.Files)
                 {
-                    var fileName = Path.GetFileName(file.FilePath);
-                    var directoryPath = Path.GetDirectoryName(file.FilePath) ?? string.Empty;
+                    var fileName = Markup.Escape(Path.GetFileName(file.FilePath));
+                    var directoryPath = Markup.Escape(Path.GetDirectoryName(file.FilePath) ?? string.Empty);
                     table.AddRow(fileName, FormatFileSize(file.FileSize), directoryPath);
                 }
 
                 AnsiConsole.Write(table);
 
-                var fileChoices = selectedGroup.Files.Select(f => f.FilePath).ToList();
+                var escapedPathMap = selectedGroup.Files.ToDictionary(
+                    f => Markup.Escape(f.FilePath),
+                    f => f.FilePath
+                );
+                var fileChoices = escapedPathMap.Keys.ToList();
                 fileChoices.Add("[yellow]Back[/]");
-                var selectedFile = AnsiConsole.Prompt(
+                var selectedFileLabel = AnsiConsole.Prompt(
                     new SelectionPrompt<string>()
                         .Title("[bold]Select a file to open location, or Back:[/]")
                         .PageSize(10)
                         .AddChoices(fileChoices)
                 );
 
-                if (selectedFile == "[yellow]Back[/]")
+                if (selectedFileLabel == "[yellow]Back[/]")
                 {
                     backRequested = true;
                     continue;
                 }
+
+                var selectedFile = escapedPathMap[selectedFileLabel];
 
                 AnsiConsole.MarkupLine($"[blue]You selected:[/] {Markup.Escape(selectedFile)}");
                 var directory = Path.GetDirectoryName(selectedFile);
@@ -293,15 +331,107 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
     private static string ShortenPath(string filePath, int maxLength)
     {
         if (string.IsNullOrEmpty(filePath) || filePath.Length <= maxLength)
+        {
             return filePath;
+        }
         var fileName = Path.GetFileName(filePath);
         if (string.IsNullOrEmpty(fileName) || fileName.Length >= maxLength - 4)
+        {
             return "..." + filePath[^Math.Min(maxLength - 3, filePath.Length)..];
+        }
         var remaining = maxLength - fileName.Length - 5; // 5 = "/..." + separator
         if (remaining <= 0)
+        {
             return "..." + Path.DirectorySeparatorChar + fileName;
+        }
         var dir = Path.GetDirectoryName(filePath) ?? "";
         return dir[..Math.Min(remaining, dir.Length)] + "/..." + Path.DirectorySeparatorChar + fileName;
+    }
+
+    private static void ShowSkippedFiles(List<(string Path, string Error)> skippedFiles)
+    {
+        var table = new Table();
+        table.Title = new TableTitle($"[bold yellow]Skipped Files ({skippedFiles.Count})[/]");
+        table.AddColumn(new TableColumn("[bold]Filename[/]").LeftAligned());
+        table.AddColumn(new TableColumn("[bold]Path[/]").LeftAligned());
+        table.AddColumn(new TableColumn("[bold]Error[/]").LeftAligned());
+
+        foreach (var (path, error) in skippedFiles)
+        {
+            var fileName = Path.GetFileName(path);
+            var directoryPath = Path.GetDirectoryName(path) ?? string.Empty;
+            table.AddRow(
+                Markup.Escape(fileName),
+                Markup.Escape(directoryPath),
+                Markup.Escape(error));
+        }
+
+        AnsiConsole.Write(table);
+
+        var escapedPathMap = skippedFiles.ToDictionary(
+            f => Markup.Escape(f.Path),
+            f => f.Path
+        );
+        var fileChoices = escapedPathMap.Keys.ToList();
+        fileChoices.Add("[yellow]Back[/]");
+        var selectedFileLabel = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title("[bold]Select a file to open its location in Finder/Explorer, or Back:[/]")
+                .PageSize(15)
+                .AddChoices(fileChoices)
+        );
+
+        if (selectedFileLabel == "[yellow]Back[/]")
+        {
+            return;
+        }
+
+        var selectedFile = escapedPathMap[selectedFileLabel];
+
+        AnsiConsole.MarkupLine($"[blue]Opening location:[/] {Markup.Escape(selectedFile)}");
+        var directory = Path.GetDirectoryName(selectedFile);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            try
+            {
+                var absPath = Path.GetFullPath(directory);
+                if (OperatingSystem.IsWindows())
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "explorer",
+                        Arguments = $"\"{absPath}\"",
+                        UseShellExecute = true
+                    });
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "open",
+                        Arguments = $"\"{absPath}\"",
+                        UseShellExecute = true
+                    });
+                }
+                else if (OperatingSystem.IsLinux())
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "xdg-open",
+                        Arguments = $"'{absPath.Replace("'", "'\\''")}'",
+                        UseShellExecute = true
+                    });
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[yellow]Cannot open folder: unsupported OS.[/]");
+                }
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Failed to open folder: {Markup.Escape(ex.Message)}[/]");
+            }
+        }
     }
 }
 
