@@ -322,4 +322,170 @@ public class FileScannerTests
     }
 
     #endregion
+
+    #region Exclude extensions tests
+
+    [Test]
+    public void ScanDirectoriesForDuplicateGroups_ExcludeExtensions_SkipsMatchingFiles()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("keep1.bin", content);
+        CreateFileWithContent("keep2.bin", content);
+        CreateFileWithContent("skip1.log", content);
+        CreateFileWithContent("skip2.log", content);
+
+        var scanner = new FileScanner();
+        var groups = scanner.ScanDirectoriesForDuplicateGroups(
+            [_tempDir], minSizeBytes: 0,
+            excludeExtensions: [".log"]);
+
+        Assert.That(groups, Has.Count.EqualTo(1));
+        Assert.That(groups[0].All(f => f.FilePath.EndsWith(".bin")), Is.True);
+    }
+
+    [Test]
+    public void ScanDirectoriesForDuplicateGroups_ExcludeExtensions_IsCaseInsensitive()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("keep1.bin", content);
+        CreateFileWithContent("keep2.bin", content);
+        CreateFileWithContent("skip1.LOG", content);
+        CreateFileWithContent("skip2.log", content);
+
+        var scanner = new FileScanner();
+        var groups = scanner.ScanDirectoriesForDuplicateGroups(
+            [_tempDir], minSizeBytes: 0,
+            excludeExtensions: [".log"]);
+
+        Assert.That(groups, Has.Count.EqualTo(1));
+        Assert.That(groups[0], Has.Count.EqualTo(2));
+        Assert.That(groups[0].All(f => f.FilePath.EndsWith(".bin")), Is.True);
+    }
+
+    [Test]
+    public void ScanDirectoriesForDuplicateGroups_ExcludeExtensions_WithoutLeadingDot()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("keep1.bin", content);
+        CreateFileWithContent("keep2.bin", content);
+        CreateFileWithContent("skip1.tmp", content);
+        CreateFileWithContent("skip2.tmp", content);
+
+        var scanner = new FileScanner();
+        var groups = scanner.ScanDirectoriesForDuplicateGroups(
+            [_tempDir], minSizeBytes: 0,
+            excludeExtensions: ["tmp"]);
+
+        Assert.That(groups, Has.Count.EqualTo(1));
+        Assert.That(groups[0].All(f => f.FilePath.EndsWith(".bin")), Is.True);
+    }
+
+    [Test]
+    public void ScanDirectoriesForDuplicateGroups_ExcludeMultipleExtensions()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("keep1.bin", content);
+        CreateFileWithContent("keep2.bin", content);
+        CreateFileWithContent("skip1.log", content);
+        CreateFileWithContent("skip2.tmp", content);
+
+        var scanner = new FileScanner();
+        var groups = scanner.ScanDirectoriesForDuplicateGroups(
+            [_tempDir], minSizeBytes: 0,
+            excludeExtensions: [".log", ".tmp"]);
+
+        Assert.That(groups, Has.Count.EqualTo(1));
+        Assert.That(groups[0], Has.Count.EqualTo(2));
+    }
+
+    #endregion
+
+    #region Exclude filenames tests
+
+    [Test]
+    public void ScanDirectoriesForDuplicateGroups_ExcludeFileNames_SkipsMatchingFiles()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("file1.bin", content);
+        CreateFileWithContent("file2.bin", content);
+        CreateFileWithContent(".DS_Store", content);
+        CreateFileWithContent("sub/.DS_Store", content);
+
+        var scanner = new FileScanner();
+        var groups = scanner.ScanDirectoriesForDuplicateGroups(
+            [_tempDir], minSizeBytes: 0,
+            excludeFileNames: [".DS_Store"]);
+
+        Assert.That(groups, Has.Count.EqualTo(1));
+        Assert.That(groups[0], Has.Count.EqualTo(2));
+        Assert.That(groups[0].All(f => Path.GetFileName(f.FilePath) != ".DS_Store"), Is.True);
+    }
+
+    [Test]
+    public void ScanDirectoriesForDuplicateGroups_ExcludeFileNames_IsCaseInsensitive()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("file1.bin", content);
+        CreateFileWithContent("file2.bin", content);
+        CreateFileWithContent("Thumbs.db", content);
+        CreateFileWithContent("sub/thumbs.DB", content);
+
+        var scanner = new FileScanner();
+        var groups = scanner.ScanDirectoriesForDuplicateGroups(
+            [_tempDir], minSizeBytes: 0,
+            excludeFileNames: ["Thumbs.db"]);
+
+        Assert.That(groups, Has.Count.EqualTo(1));
+        Assert.That(groups[0], Has.Count.EqualTo(2));
+        Assert.That(groups[0].All(f => Path.GetFileName(f.FilePath).EndsWith(".bin")), Is.True);
+    }
+
+    [Test]
+    public void ScanDirectoriesForDuplicateGroups_ExcludeFileNames_MultipleNames()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("file1.bin", content);
+        CreateFileWithContent("file2.bin", content);
+        CreateFileWithContent(".DS_Store", content);
+        CreateFileWithContent("Thumbs.db", content);
+        CreateFileWithContent("desktop.ini", content);
+
+        var scanner = new FileScanner();
+        var groups = scanner.ScanDirectoriesForDuplicateGroups(
+            [_tempDir], minSizeBytes: 0,
+            excludeFileNames: [".DS_Store", "Thumbs.db", "desktop.ini"]);
+
+        Assert.That(groups, Has.Count.EqualTo(1));
+        Assert.That(groups[0], Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ScanDirectoriesForDuplicateGroups_CombinedExclusions()
+    {
+        var content = new byte[200];
+        Random.Shared.NextBytes(content);
+        CreateFileWithContent("file1.bin", content);
+        CreateFileWithContent("file2.bin", content);
+        CreateFileWithContent("skip.log", content);
+        CreateFileWithContent(".DS_Store", content);
+
+        var scanner = new FileScanner();
+        var groups = scanner.ScanDirectoriesForDuplicateGroups(
+            [_tempDir], minSizeBytes: 0,
+            excludeExtensions: [".log"],
+            excludeFileNames: [".DS_Store"]);
+
+        Assert.That(groups, Has.Count.EqualTo(1));
+        Assert.That(groups[0], Has.Count.EqualTo(2));
+        Assert.That(groups[0].All(f => f.FilePath.EndsWith(".bin")), Is.True);
+    }
+
+    #endregion
 }

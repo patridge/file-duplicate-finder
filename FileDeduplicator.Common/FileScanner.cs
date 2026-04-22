@@ -65,6 +65,8 @@ namespace FileDeduplicator.Common
             string[] startPaths, long minSizeBytes,
             IFileComparer[]? comparers = null,
             string[]? excludePaths = null,
+            string[]? excludeExtensions = null,
+            string[]? excludeFileNames = null,
             Action<string>? onStatus = null,
             Action<double, string>? onProgress = null,
             Action<string, string>? onFileSkipped = null)
@@ -72,6 +74,10 @@ namespace FileDeduplicator.Common
             var normalizedExcludes = (excludePaths ?? [])
                 .Select(p => Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar)
                 .ToArray();
+            var extExcludes = (excludeExtensions ?? [])
+                .Select(ext => ext.StartsWith('.') ? ext : "." + ext)
+                .ToArray();
+            var fileNameExcludes = excludeFileNames ?? [];
 
             // Phase 1: Collect file info from all paths and filter by minimum size
             var candidates = new List<(string FilePath, FileInfo Info)>();
@@ -80,7 +86,7 @@ namespace FileDeduplicator.Common
             foreach (var startPath in startPaths)
             {
                 onStatus?.Invoke($"Discovering files in {startPath}...");
-                foreach (var filePath in EnumerateFilesExcluding(startPath, normalizedExcludes))
+                foreach (var filePath in EnumerateFilesExcluding(startPath, normalizedExcludes, extExcludes, fileNameExcludes))
                 {
                     totalFound++;
                     try
@@ -202,7 +208,7 @@ namespace FileDeduplicator.Common
             }
         }
 
-        private static IEnumerable<string> EnumerateFilesExcluding(string rootPath, string[] normalizedExcludes)
+        private static IEnumerable<string> EnumerateFilesExcluding(string rootPath, string[] normalizedExcludes, string[] extExcludes, string[] fileNameExcludes)
         {
             var dirs = new Stack<string>();
             dirs.Push(rootPath);
@@ -227,6 +233,22 @@ namespace FileDeduplicator.Common
 
                 foreach (var file in files)
                 {
+                    var fileName = Path.GetFileName(file);
+                    if (extExcludes.Length > 0)
+                    {
+                        var ext = Path.GetExtension(file);
+                        if (extExcludes.Any(e => string.Equals(e, ext, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            continue;
+                        }
+                    }
+                    if (fileNameExcludes.Length > 0)
+                    {
+                        if (fileNameExcludes.Any(f => string.Equals(f, fileName, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            continue;
+                        }
+                    }
                     yield return file;
                 }
 

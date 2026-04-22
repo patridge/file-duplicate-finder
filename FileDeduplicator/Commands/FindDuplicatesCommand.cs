@@ -16,6 +16,18 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
 {
     private const long DefaultMinSizeBytes = 0L;
 
+    private static readonly string[] SystemGeneratedFiles =
+    [
+        ".DS_Store",           // macOS: Finder folder metadata (view options, icon positions, background)
+        "Thumbs.db",           // Windows: Explorer thumbnail cache for image/video previews
+        "desktop.ini",         // Windows: folder display settings (custom icons, localized names)
+        ".thumbs",             // Linux (Nautilus/GNOME): thumbnail cache directory marker
+        ".Spotlight-V100",     // macOS: Spotlight search index data for a volume
+        ".Trashes",            // macOS: per-volume trash folder (used on external/network drives)
+        ".fseventsd",          // macOS: file system event log used by FSEvents for change tracking
+        ".TemporaryItems",     // macOS: temporary files created during Finder copy/move operations
+    ];
+
     public sealed class Settings : CommandSettings
     {
         // NOTE: [developers] When running via dotnet tool for multiple directories, the --path option will avoid errors about multiple projects being called.
@@ -37,6 +49,19 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         [CommandOption("-x|--exclude <PATH>")]
         [Description("One or more paths to exclude from scanning. Specify multiple times: --exclude /path1/skip --exclude /path2/skip")]
         public string[]? ExcludePaths { get; set; }
+
+        [CommandOption("--exclude-extension <EXT>")]
+        [Description("One or more file extensions to exclude (e.g., --exclude-extension .log --exclude-extension .tmp).")]
+        public string[]? ExcludeExtensions { get; set; }
+
+        [CommandOption("--exclude-filename <FILENAME>")]
+        [Description("One or more filenames to exclude (e.g., --exclude-filename .DS_Store --exclude-filename Thumbs.db).")]
+        public string[]? ExcludeFileNames { get; set; }
+
+        [CommandOption("--exclude-common-system-files")]
+        [Description("Exclude common system-generated files (e.g., .DS_Store, Thumbs.db, desktop.ini).")]
+        [DefaultValue(false)]
+        public bool ExcludeSystemFiles { get; set; }
     }
 
     public override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
@@ -65,6 +90,23 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         foreach (var excludePath in excludePaths)
         {
             AnsiConsole.MarkupLine($"  [yellow]-[/] {Markup.Escape(excludePath)}");
+        }
+
+        var excludeExtensions = (settings.ExcludeExtensions ?? [])
+            .Select(ext => ext.StartsWith('.') ? ext : "." + ext)
+            .ToArray();
+
+        var excludeFileNames = settings.ExcludeSystemFiles
+            ? (settings.ExcludeFileNames ?? []).Concat(SystemGeneratedFiles).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            : (settings.ExcludeFileNames ?? []).ToArray();
+
+        if (excludeExtensions.Length > 0)
+        {
+            AnsiConsole.MarkupLine($"Excluding extensions: [yellow]{Markup.Escape(string.Join(", ", excludeExtensions))}[/]");
+        }
+        if (excludeFileNames.Length > 0)
+        {
+            AnsiConsole.MarkupLine($"Excluding filenames: [yellow]{Markup.Escape(string.Join(", ", excludeFileNames))}[/]");
         }
         if (settings.MinSizeBytes > 0)
         {
@@ -102,6 +144,8 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                     settings.MinSizeBytes,
                     comparers,
                     excludePaths: excludePaths,
+                    excludeExtensions: excludeExtensions,
+                    excludeFileNames: excludeFileNames,
                     onStatus: message =>
                     {
                         task.Description = Markup.Escape(message);
