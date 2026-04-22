@@ -110,9 +110,9 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         var duplicateGroups = (rawGroups ?? [])
         .Select(g => (Key: g[0].Sha256Hash.ToHexString(), Files: g))
         .OrderByDescending(g => g.Files[0].FileSize)
-        .ToArray();
+        .ToList();
 
-        if (duplicateGroups.Length == 0)
+        if (duplicateGroups.Count == 0)
         {
             AnsiConsole.MarkupLine("[green]No duplicate files found.[/]");
             if (skippedFiles.Count > 0)
@@ -124,7 +124,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         }
 
         var totalWastedBytes = duplicateGroups.Sum(g => g.Files[0].FileSize * (g.Files.Count - 1));
-        AnsiConsole.MarkupLine($"[green]Found {duplicateGroups.Length} duplicate group(s)![/]");
+        AnsiConsole.MarkupLine($"[green]Found {duplicateGroups.Count} duplicate group(s)![/]");
         AnsiConsole.MarkupLine($"[yellow]Potential space savings: {FormatFileSize(totalWastedBytes)}[/]");
         if (skippedFiles.Count > 0)
         {
@@ -134,11 +134,15 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
 
         const int pageSize = 10;
         int currentPage = 0;
-        int totalPages = (int)Math.Ceiling(duplicateGroups.Length / (double)pageSize);
         bool exitRequested = false;
 
         while (!exitRequested)
         {
+            int totalPages = (int)Math.Ceiling(duplicateGroups.Count / (double)pageSize);
+            if (currentPage >= totalPages)
+            {
+                currentPage = Math.Max(0, totalPages - 1);
+            }
             int startIdx = currentPage * pageSize;
             var pageGroups = duplicateGroups.Skip(startIdx).Take(pageSize).ToArray();
 
@@ -247,17 +251,73 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                     f => f.FilePath
                 );
                 var fileChoices = escapedPathMap.Keys.ToList();
+                fileChoices.Add("[green]Refresh[/]");
                 fileChoices.Add("[yellow]Back[/]");
                 var selectedFileLabel = AnsiConsole.Prompt(
                     new SelectionPrompt<string>()
-                        .Title("[bold]Select a file to open location, or Back:[/]")
-                        .PageSize(10)
+                        .Title("[bold]Select a file to open location, Refresh, or Back:[/]")
+                        .PageSize(12)
                         .AddChoices(fileChoices)
                 );
 
                 if (selectedFileLabel == "[yellow]Back[/]")
                 {
                     backRequested = true;
+                    continue;
+                }
+
+                if (selectedFileLabel == "[green]Refresh[/]")
+                {
+                    var removedCount = 0;
+                    var originalHash = selectedGroup.Key;
+                    for (int i = selectedGroup.Files.Count - 1; i >= 0; i--)
+                    {
+                        var file = selectedGroup.Files[i];
+                        if (!File.Exists(file.FilePath))
+                        {
+                            AnsiConsole.MarkupLine($"[yellow]Removed (missing):[/] {Markup.Escape(file.FilePath)}");
+                            selectedGroup.Files.RemoveAt(i);
+                            removedCount++;
+                            continue;
+                        }
+                        try
+                        {
+                            var currentHash = FileHelpers.GetFileSha256(file.FilePath).ToHexString();
+                            if (currentHash != originalHash)
+                            {
+                                AnsiConsole.MarkupLine($"[yellow]Removed (hash changed):[/] {Markup.Escape(file.FilePath)}");
+                                selectedGroup.Files.RemoveAt(i);
+                                removedCount++;
+                            }
+                        }
+                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                        {
+                            AnsiConsole.MarkupLine($"[yellow]Removed (inaccessible):[/] {Markup.Escape(file.FilePath)}");
+                            selectedGroup.Files.RemoveAt(i);
+                            removedCount++;
+                        }
+                    }
+
+                    if (removedCount == 0)
+                    {
+                        AnsiConsole.MarkupLine("[green]All files still match.[/]");
+                    }
+                    else if (selectedGroup.Files.Count < 2)
+                    {
+                        AnsiConsole.MarkupLine("[yellow]Group no longer has enough duplicates. Removing group.[/]");
+                        duplicateGroups.Remove(selectedGroup);
+                        if (duplicateGroups.Count == 0)
+                        {
+                            AnsiConsole.MarkupLine("[green]No duplicate groups remaining.[/]");
+                            return 0;
+                        }
+                        backRequested = true;
+                    }
+                    else
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]Removed {removedCount} file(s). {selectedGroup.Files.Count} remaining.[/]");
+                    }
+                    AnsiConsole.WriteLine();
                     continue;
                 }
 
