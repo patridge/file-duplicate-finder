@@ -18,26 +18,12 @@
 			}
 		},
 		{
-			"label": "run ScanCommand",
+			"label": "run FindDuplicatesCommand",
 			"type": "shell",
-			"command": "dotnet run --project FileDeduplicator/FileDeduplicator.csproj scan --path FileDeduplicator.Tests/test_files",
+			"command": "dotnet run --project FileDeduplicator/FileDeduplicator.csproj find-duplicates --path FileDeduplicator.Tests/test_files",
 			"args": [],
 			"isBackground": false,
 			"group": "build"
-		},
-		{
-			"label": "run ScanCommand (test-ui)",
-			"type": "shell",
-			"command": "dotnet",
-			"args": [
-				"run",
-				"--project",
-				"FileDeduplicator/FileDeduplicator.csproj",
-				"scan",
-				"--test-ui"
-			],
-			"isBackground": false,
-			"group": "test"
 		}
 	]
 }
