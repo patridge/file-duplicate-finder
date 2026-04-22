@@ -5,6 +5,12 @@ using Spectre.Console.Cli;
 
 namespace FileDeduplicator.Commands;
 
+public enum GroupSortOrder
+{
+    Path,
+    Size,
+}
+
 [Description("Find duplicate files, optionally filtering by minimum file size.")]
 public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settings>
 {
@@ -108,9 +114,15 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             });
 
         var duplicateGroups = (rawGroups ?? [])
-        .Select(g => (Key: g[0].Sha256Hash.ToHexString(), Files: g))
+        .Select(g =>
+        {
+            g.Sort((a, b) => string.Compare(a.FilePath, b.FilePath, StringComparison.OrdinalIgnoreCase));
+            return (Key: g[0].Sha256Hash.ToHexString(), Files: g);
+        })
         .OrderByDescending(g => g.Files[0].FileSize)
         .ToList();
+
+        var sortOrder = GroupSortOrder.Size;
 
         if (duplicateGroups.Count == 0)
         {
@@ -138,13 +150,19 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
 
         while (!exitRequested)
         {
-            int totalPages = (int)Math.Ceiling(duplicateGroups.Count / (double)pageSize);
+            var sortedGroups = sortOrder switch
+            {
+                GroupSortOrder.Path => duplicateGroups.OrderBy(g => g.Files[0].FilePath, StringComparer.OrdinalIgnoreCase).ToList(),
+                GroupSortOrder.Size or _ => duplicateGroups.OrderByDescending(g => g.Files[0].FileSize).ToList(),
+            };
+
+            int totalPages = (int)Math.Ceiling(sortedGroups.Count / (double)pageSize);
             if (currentPage >= totalPages)
             {
                 currentPage = Math.Max(0, totalPages - 1);
             }
             int startIdx = currentPage * pageSize;
-            var pageGroups = duplicateGroups.Skip(startIdx).Take(pageSize).ToArray();
+            var pageGroups = sortedGroups.Skip(startIdx).Take(pageSize).ToArray();
 
             var labelMap = new Dictionary<string, string>();
             foreach (var g in pageGroups)
@@ -172,7 +190,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                 labelMap[label] = g.Key;
             }
 
-            AnsiConsole.MarkupLine($"[grey]Page {currentPage + 1} of {totalPages}[/]");
+            AnsiConsole.MarkupLine($"[grey]Page {currentPage + 1} of {totalPages} (sorted by {sortOrder.ToString().ToLowerInvariant()})[/]");
 
             var prompt = new SelectionPrompt<string>()
                 .Title("[bold yellow]Select a duplicate group, page, or Exit:[/]")
@@ -195,6 +213,13 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             {
                 prompt.AddChoice($"[yellow]Skipped Files ({skippedFiles.Count})[/]");
             }
+            var nextSortOrder = sortOrder switch
+            {
+                GroupSortOrder.Path => GroupSortOrder.Size,
+                GroupSortOrder.Size or _ => GroupSortOrder.Path,
+            };
+            var sortLabel = $"[blue]Sort by {nextSortOrder}[/]";
+            prompt.AddChoice(sortLabel);
             prompt.AddChoice("[red]Exit[/]");
 
             var selectedLabel = AnsiConsole.Prompt(prompt);
@@ -217,6 +242,12 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             if (selectedLabel == $"[yellow]Skipped Files ({skippedFiles.Count})[/]")
             {
                 ShowSkippedFiles(skippedFiles);
+                continue;
+            }
+            if (selectedLabel == sortLabel)
+            {
+                sortOrder = nextSortOrder;
+                currentPage = 0;
                 continue;
             }
 
