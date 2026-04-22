@@ -54,13 +54,17 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             }
         }
 
-        AnsiConsole.MarkupLine($"Scanning for duplicate files in: [blue]{Markup.Escape(string.Join(", ", paths))}[/]");
+        AnsiConsole.MarkupLine("Scanning for duplicate files:");
+        foreach (var path in paths)
+        {
+            AnsiConsole.MarkupLine($"  [blue]+[/] {Markup.Escape(path)}");
+        }
         var excludePaths = settings.ExcludePaths is { Length: > 0 }
             ? settings.ExcludePaths.Select(p => Path.GetFullPath(p)).ToArray()
             : Array.Empty<string>();
-        if (excludePaths.Length > 0)
+        foreach (var excludePath in excludePaths)
         {
-            AnsiConsole.MarkupLine($"Excluding: [yellow]{Markup.Escape(string.Join(", ", excludePaths))}[/]");
+            AnsiConsole.MarkupLine($"  [yellow]-[/] {Markup.Escape(excludePath)}");
         }
         if (settings.MinSizeBytes > 0)
         {
