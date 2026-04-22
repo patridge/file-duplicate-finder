@@ -229,22 +229,27 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             var selectedGroup = duplicateGroups.First(g => g.Key == selectedKey);
 
             bool backRequested = false;
+            bool showTable = true;
             while (!backRequested)
             {
-                var table = new Table();
-                table.Title = new TableTitle($"[bold yellow]SHA-256: {ShortenHash(selectedGroup.Key)}[/]");
-                table.AddColumn(new TableColumn("[bold]Filename[/]").LeftAligned());
-                table.AddColumn(new TableColumn("[bold]Size[/]").RightAligned());
-                table.AddColumn(new TableColumn("[bold]Path[/]").LeftAligned());
-
-                foreach (var file in selectedGroup.Files)
+                if (showTable)
                 {
-                    var fileName = Markup.Escape(Path.GetFileName(file.FilePath));
-                    var directoryPath = Markup.Escape(Path.GetDirectoryName(file.FilePath) ?? string.Empty);
-                    table.AddRow(fileName, FormatFileSize(file.FileSize), directoryPath);
-                }
+                    var table = new Table();
+                    table.Title = new TableTitle($"[bold yellow]SHA-256: {ShortenHash(selectedGroup.Key)}[/]");
+                    table.AddColumn(new TableColumn("[bold]Filename[/]").LeftAligned());
+                    table.AddColumn(new TableColumn("[bold]Size[/]").RightAligned());
+                    table.AddColumn(new TableColumn("[bold]Path[/]").LeftAligned());
 
-                AnsiConsole.Write(table);
+                    foreach (var file in selectedGroup.Files)
+                    {
+                        var fileName = Markup.Escape(Path.GetFileName(file.FilePath));
+                        var directoryPath = Markup.Escape(Path.GetDirectoryName(file.FilePath) ?? string.Empty);
+                        table.AddRow(fileName, FormatFileSize(file.FileSize), directoryPath);
+                    }
+
+                    AnsiConsole.Write(table);
+                    showTable = false;
+                }
 
                 var escapedPathMap = selectedGroup.Files.ToDictionary(
                     f => Markup.Escape(f.FilePath),
@@ -304,7 +309,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                     }
                     else if (selectedGroup.Files.Count < 2)
                     {
-                        AnsiConsole.MarkupLine("[yellow]Group no longer has enough duplicates. Removing group.[/]");
+                        AnsiConsole.MarkupLine("[yellow]Group no longer has duplicates. Removing group.[/]");
                         duplicateGroups.Remove(selectedGroup);
                         if (duplicateGroups.Count == 0)
                         {
@@ -318,6 +323,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                         AnsiConsole.MarkupLine($"[yellow]Removed {removedCount} file(s). {selectedGroup.Files.Count} remaining.[/]");
                     }
                     AnsiConsole.WriteLine();
+                    showTable = true;
                     continue;
                 }
 

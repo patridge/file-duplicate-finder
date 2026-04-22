@@ -9,5 +9,5 @@ The goal of FileDeduplicator is to scan directories for duplicate files, with th
 ## Current Plan
 
 * Running a scan will use a Scanner with all the configuration required to complete the scan.
-* A Scanner will use various Comparers to compare file types, with the most basic being just binary file comparison (allowing differences in timestamps to be considered equivalent).
+* A Scanner will use various Comparers to compare file types, with the most basic being full file hash comparison (allowing differences in timestamps to be considered equivalent).
 * Comparers will use various Identifiers to determine if a file is of a type that the comparer can handle (image, audio, etc.).
