@@ -44,6 +44,29 @@
 				}
 			},
 			"group": "build"
+		},
+		{
+			"label": "publish (select platform)",
+			"type": "process",
+			"command": "dotnet",
+			"args": ["publish", "${workspaceFolder}/FileDeduplicator/FileDeduplicator.csproj", "-c", "Release", "-r", "${input:rid}"],
+			"group": "build"
+		},
+		{
+			"label": "publish all platforms",
+			"type": "shell",
+			"command": "for rid in osx-arm64 osx-x64 linux-x64 linux-arm64 win-x64; do dotnet publish ${workspaceFolder}/FileDeduplicator/FileDeduplicator.csproj -c Release -r $rid || exit 1; done",
+			"group": "build",
+			"problemMatcher": []
+		}
+	],
+	"inputs": [
+		{
+			"id": "rid",
+			"type": "pickString",
+			"description": "Select target Runtime Identifier",
+			"options": ["osx-arm64", "osx-x64", "linux-x64", "linux-arm64", "win-x64"],
+			"default": "osx-arm64"
 		}
 	]
 }

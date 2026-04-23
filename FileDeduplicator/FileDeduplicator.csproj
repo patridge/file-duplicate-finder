@@ -7,6 +7,14 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <PropertyGroup>
+        <PublishSingleFile>true</PublishSingleFile>
+        <SelfContained>true</SelfContained>
+        <PublishTrimmed>true</PublishTrimmed>
+        <NoWarn>$(NoWarn);IL2104</NoWarn>
+        <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    </PropertyGroup>
+
     <ItemGroup>
       <PackageReference Include="Spectre.Console" Version="0.54.0" />
       <PackageReference Include="Spectre.Console.Cli" Version="0.53.1" />
