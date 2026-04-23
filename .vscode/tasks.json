@@ -24,6 +24,26 @@
 			"args": [],
 			"isBackground": false,
 			"group": "build"
+		},
+		{
+			"label": "run FindDuplicatesCommand (pwsh)",
+			"type": "shell",
+			"command": "dotnet",
+			"args": [
+				"run",
+				"--project",
+				"FileDeduplicator/FileDeduplicator.csproj",
+				"find-duplicates",
+				"--path",
+				"FileDeduplicator.Tests/test_files"
+			],
+			"options": {
+				"shell": {
+					"executable": "pwsh",
+					"args": ["-Command"]
+				}
+			},
+			"group": "build"
 		}
 	]
 }
