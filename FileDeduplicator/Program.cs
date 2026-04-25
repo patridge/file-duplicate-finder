@@ -11,7 +11,8 @@ internal class Program
         var app = new CommandApp();
         app.Configure(config =>
         {
-            config.SetApplicationName("deduper");
+            var executableName = Path.GetFileNameWithoutExtension(Environment.ProcessPath) ?? "FileDeduplicator";
+            config.SetApplicationName(executableName);
             config.ValidateExamples();
 
             config.AddCommand<CompareCommand>("compare")
