@@ -15,20 +15,17 @@ jobs:
         include:
           - rid: osx-arm64
             os: macos-latest
-            artifact: FileDeduplicator-osx-arm64
           - rid: osx-x64
             os: macos-latest
-            artifact: FileDeduplicator-osx-x64
           - rid: linux-x64
             os: ubuntu-latest
-            artifact: FileDeduplicator-linux-x64
           - rid: linux-arm64
             os: ubuntu-latest
-            artifact: FileDeduplicator-linux-arm64
           - rid: win-x64
             os: windows-latest
-            artifact: FileDeduplicator-win-x64
     runs-on: ${{ matrix.os }}
+    env:
+      ARTIFACT_NAME: FileDeduplicator-${{ github.ref_name }}-${{ matrix.rid }}
     steps:
       - uses: actions/checkout@v6
 
@@ -43,16 +40,16 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cd publish/${{ matrix.rid }}
-          zip -r ../../${{ matrix.artifact }}.zip .
+          zip -r ../../${{ env.ARTIFACT_NAME }}.zip .
 
       - name: Create zip (Windows)
         if: runner.os == 'Windows'
-        run: Compress-Archive -Path publish/${{ matrix.rid }}/* -DestinationPath ${{ matrix.artifact }}.zip
+        run: Compress-Archive -Path publish/${{ matrix.rid }}/* -DestinationPath ${{ env.ARTIFACT_NAME }}.zip
 
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.zip
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_NAME }}.zip
 
   release:
     needs: build
