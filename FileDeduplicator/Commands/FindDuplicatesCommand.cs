@@ -255,6 +255,8 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             var prompt = new SelectionPrompt<string>()
                 .Title("[bold yellow]Select a duplicate group, page, or Exit:[/]")
                 .PageSize(pageSize + 3)
+                .WrapAround()
+                .EnableSearch()
                 .HighlightStyle("bold yellow");
 
             if (currentPage > 0)
@@ -353,6 +355,8 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
                     new SelectionPrompt<string>()
                         .Title("[bold]Select a file to open location, Refresh, or Back:[/]")
                         .PageSize(12)
+                        .WrapAround()
+                        .EnableSearch()
                         .AddChoices(fileChoices)
                 );
 
