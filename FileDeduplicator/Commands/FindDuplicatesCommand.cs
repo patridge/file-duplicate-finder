@@ -64,7 +64,7 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         public bool ExcludeSystemFiles { get; set; }
     }
 
-    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
+    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         var paths = settings.Paths is { Length: > 0 }
             ? settings.Paths.Select(p => string.IsNullOrWhiteSpace(p) ? Environment.CurrentDirectory : p).ToArray()

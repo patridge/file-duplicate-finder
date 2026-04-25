@@ -19,7 +19,7 @@ public sealed class CompareCommand : Command<CompareCommand.Settings>
         public required string File2Path { get; set; }
     }
 
-    public override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
+    protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
         // Validate file paths
         if (!File.Exists(settings.File1Path))
