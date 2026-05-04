@@ -1,15 +1,10 @@
 using System.ComponentModel;
 using FileDeduplicator.Common;
+using FileDeduplicator.Tui;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace FileDeduplicator.Commands;
-
-public enum GroupSortOrder
-{
-    Path,
-    Size,
-}
 
 [Description("Find duplicate files, optionally filtering by minimum file size.")]
 public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settings>
@@ -182,299 +177,16 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         .OrderByDescending(g => g.Files[0].FileSize)
         .ToList();
 
-        var sortOrder = GroupSortOrder.Size;
-
         if (duplicateGroups.Count == 0)
         {
             AnsiConsole.MarkupLine("[green]No duplicate files found.[/]");
             if (skippedFiles.Count > 0)
             {
                 AnsiConsole.MarkupLine($"[yellow]{skippedFiles.Count} file(s) could not be scanned.[/]");
-                ShowSkippedFiles(skippedFiles);
             }
             return 0;
         }
-
-        var totalWastedBytes = duplicateGroups.Sum(g => g.Files[0].FileSize * (g.Files.Count - 1));
-        AnsiConsole.MarkupLine($"[green]Found {duplicateGroups.Count} duplicate group(s)![/]");
-        AnsiConsole.MarkupLine($"[yellow]Potential space savings: {FormatFileSize(totalWastedBytes)}[/]");
-        if (skippedFiles.Count > 0)
-        {
-            AnsiConsole.MarkupLine($"[yellow]{skippedFiles.Count} file(s) could not be scanned.[/]");
-        }
-        AnsiConsole.WriteLine();
-
-        const int pageSize = 10;
-        int currentPage = 0;
-        bool exitRequested = false;
-
-        while (!exitRequested)
-        {
-            var sortedGroups = sortOrder switch
-            {
-                GroupSortOrder.Path => duplicateGroups.OrderBy(g => g.Files[0].FilePath, StringComparer.OrdinalIgnoreCase).ToList(),
-                GroupSortOrder.Size or _ => duplicateGroups.OrderByDescending(g => g.Files[0].FileSize).ToList(),
-            };
-
-            int totalPages = (int)Math.Ceiling(sortedGroups.Count / (double)pageSize);
-            if (currentPage >= totalPages)
-            {
-                currentPage = Math.Max(0, totalPages - 1);
-            }
-            int startIdx = currentPage * pageSize;
-            var pageGroups = sortedGroups.Skip(startIdx).Take(pageSize).ToArray();
-
-            var labelMap = new Dictionary<string, string>();
-            foreach (var g in pageGroups)
-            {
-                var files = g.Files;
-                var fileNames = files.Select(f => Path.GetFileName(f.FilePath)).Distinct().ToList();
-                string prefix;
-                if (fileNames.Count == 1)
-                {
-                    prefix = fileNames[0];
-                }
-                else
-                {
-                    var extensions = files.Select(f => Path.GetExtension(f.FilePath).ToLowerInvariant()).Distinct().ToList();
-                    prefix = extensions.Count == 1 && !string.IsNullOrWhiteSpace(extensions[0])
-                        ? $"[{extensions[0]} file]"
-                        : "[multiple files]";
-                }
-
-                var sizeLabel = FormatFileSize(files[0].FileSize);
-                var prefixEscaped = prefix.Replace("[", "[[").Replace("]", "]]");
-                var hashShort = ShortenHash(g.Key);
-                var hashEscaped = hashShort.Replace("[", "[[").Replace("]", "]]");
-                var label = $"{prefixEscaped} ({sizeLabel}, {g.Files.Count} files) [[{hashEscaped}]]";
-                labelMap[label] = g.Key;
-            }
-
-            AnsiConsole.MarkupLine($"[grey]Page {currentPage + 1} of {totalPages} (sorted by {sortOrder.ToString().ToLowerInvariant()})[/]");
-
-            var prompt = new SelectionPrompt<string>()
-                .Title("[bold yellow]Select a duplicate group, page, or Exit:[/]")
-                .PageSize(pageSize + 3)
-                .WrapAround()
-                .EnableSearch()
-                .HighlightStyle("bold yellow");
-
-            if (currentPage > 0)
-            {
-                prompt.AddChoice("[blue]Prev Page[/]");
-            }
-            foreach (var label in labelMap.Keys)
-            {
-                prompt.AddChoice(label);
-            }
-            if (currentPage < totalPages - 1)
-            {
-                prompt.AddChoice("[blue]Next Page[/]");
-            }
-            if (skippedFiles.Count > 0)
-            {
-                prompt.AddChoice($"[yellow]Skipped Files ({skippedFiles.Count})[/]");
-            }
-            var nextSortOrder = sortOrder switch
-            {
-                GroupSortOrder.Path => GroupSortOrder.Size,
-                GroupSortOrder.Size or _ => GroupSortOrder.Path,
-            };
-            var sortLabel = $"[blue]Sort by {nextSortOrder}[/]";
-            prompt.AddChoice(sortLabel);
-            prompt.AddChoice("[red]Exit[/]");
-
-            var selectedLabel = AnsiConsole.Prompt(prompt);
-
-            if (selectedLabel == "[red]Exit[/]")
-            {
-                exitRequested = true;
-                break;
-            }
-            if (selectedLabel == "[blue]Prev Page[/]")
-            {
-                if (currentPage > 0) currentPage--;
-                continue;
-            }
-            if (selectedLabel == "[blue]Next Page[/]")
-            {
-                if (currentPage < totalPages - 1) currentPage++;
-                continue;
-            }
-            if (selectedLabel == $"[yellow]Skipped Files ({skippedFiles.Count})[/]")
-            {
-                ShowSkippedFiles(skippedFiles);
-                continue;
-            }
-            if (selectedLabel == sortLabel)
-            {
-                sortOrder = nextSortOrder;
-                currentPage = 0;
-                continue;
-            }
-
-            if (!labelMap.TryGetValue(selectedLabel, out var selectedKey) || string.IsNullOrEmpty(selectedKey))
-            {
-                AnsiConsole.MarkupLine("[red]Could not determine hash from selection. Skipping group.[/]");
-                continue;
-            }
-
-            var selectedGroup = duplicateGroups.First(g => g.Key == selectedKey);
-
-            bool backRequested = false;
-            bool showTable = true;
-            while (!backRequested)
-            {
-                if (showTable)
-                {
-                    var table = new Table();
-                    table.Title = new TableTitle($"[bold yellow]SHA-256: {ShortenHash(selectedGroup.Key)}[/]");
-                    table.AddColumn(new TableColumn("[bold]Filename[/]").LeftAligned());
-                    table.AddColumn(new TableColumn("[bold]Size[/]").RightAligned());
-                    table.AddColumn(new TableColumn("[bold]Path[/]").LeftAligned());
-
-                    foreach (var file in selectedGroup.Files)
-                    {
-                        var fileName = Markup.Escape(Path.GetFileName(file.FilePath));
-                        var directoryPath = Markup.Escape(Path.GetDirectoryName(file.FilePath) ?? string.Empty);
-                        table.AddRow(fileName, FormatFileSize(file.FileSize), directoryPath);
-                    }
-
-                    AnsiConsole.Write(table);
-                    showTable = false;
-                }
-
-                var escapedPathMap = selectedGroup.Files.ToDictionary(
-                    f => Markup.Escape(f.FilePath),
-                    f => f.FilePath
-                );
-                var fileChoices = escapedPathMap.Keys.ToList();
-                fileChoices.Add("[green]Refresh[/]");
-                fileChoices.Add("[yellow]Back[/]");
-                var selectedFileLabel = AnsiConsole.Prompt(
-                    new SelectionPrompt<string>()
-                        .Title("[bold]Select a file to open location, Refresh, or Back:[/]")
-                        .PageSize(12)
-                        .WrapAround()
-                        .EnableSearch()
-                        .AddChoices(fileChoices)
-                );
-
-                if (selectedFileLabel == "[yellow]Back[/]")
-                {
-                    backRequested = true;
-                    continue;
-                }
-
-                if (selectedFileLabel == "[green]Refresh[/]")
-                {
-                    var removedCount = 0;
-                    var originalHash = selectedGroup.Key;
-                    for (int i = selectedGroup.Files.Count - 1; i >= 0; i--)
-                    {
-                        var file = selectedGroup.Files[i];
-                        if (!File.Exists(file.FilePath))
-                        {
-                            AnsiConsole.MarkupLine($"[yellow]Removed (missing):[/] {Markup.Escape(file.FilePath)}");
-                            selectedGroup.Files.RemoveAt(i);
-                            removedCount++;
-                            continue;
-                        }
-                        try
-                        {
-                            var currentHash = FileHelpers.GetFileSha256(file.FilePath).ToHexString();
-                            if (currentHash != originalHash)
-                            {
-                                AnsiConsole.MarkupLine($"[yellow]Removed (hash changed):[/] {Markup.Escape(file.FilePath)}");
-                                selectedGroup.Files.RemoveAt(i);
-                                removedCount++;
-                            }
-                        }
-                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                        {
-                            AnsiConsole.MarkupLine($"[yellow]Removed (inaccessible):[/] {Markup.Escape(file.FilePath)}");
-                            selectedGroup.Files.RemoveAt(i);
-                            removedCount++;
-                        }
-                    }
-
-                    if (removedCount == 0)
-                    {
-                        AnsiConsole.MarkupLine("[green]All files still match.[/]");
-                    }
-                    else if (selectedGroup.Files.Count < 2)
-                    {
-                        AnsiConsole.MarkupLine("[yellow]Group no longer has duplicates. Removing group.[/]");
-                        duplicateGroups.Remove(selectedGroup);
-                        if (duplicateGroups.Count == 0)
-                        {
-                            AnsiConsole.MarkupLine("[green]No duplicate groups remaining.[/]");
-                            return 0;
-                        }
-                        backRequested = true;
-                    }
-                    else
-                    {
-                        AnsiConsole.MarkupLine($"[yellow]Removed {removedCount} file(s). {selectedGroup.Files.Count} remaining.[/]");
-                    }
-                    AnsiConsole.WriteLine();
-                    showTable = true;
-                    continue;
-                }
-
-                var selectedFile = escapedPathMap[selectedFileLabel];
-
-                AnsiConsole.MarkupLine($"[blue]You selected:[/] {Markup.Escape(selectedFile)}");
-                var directory = Path.GetDirectoryName(selectedFile);
-                if (!string.IsNullOrEmpty(directory))
-                {
-                    try
-                    {
-                        var absFile = Path.GetFullPath(selectedFile);
-                        if (OperatingSystem.IsWindows())
-                        {
-                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                            {
-                                FileName = "explorer",
-                                Arguments = $"/select,\"{absFile}\"",
-                                UseShellExecute = true
-                            });
-                        }
-                        else if (OperatingSystem.IsMacOS())
-                        {
-                            var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                            {
-                                FileName = "open",
-                                Arguments = $"-R \"{absFile}\"",
-                                UseShellExecute = true
-                            });
-                            if (process == null)
-                            {
-                                AnsiConsole.MarkupLine($"[red]Failed to start Finder process for: {Markup.Escape(absFile)}[/]");
-                            }
-                        }
-                        else if (OperatingSystem.IsLinux())
-                        {
-                            var absDir = Path.GetFullPath(directory);
-                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                            {
-                                FileName = "xdg-open",
-                                Arguments = $"'{absDir.Replace("'", "'\\''")}'",
-                                UseShellExecute = true
-                            });
-                        }
-                        else
-                        {
-                            AnsiConsole.MarkupLine("[yellow]Cannot open folder: unsupported OS.[/]");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        AnsiConsole.MarkupLine($"[red]Failed to open folder: {Markup.Escape(ex.Message)}[/]");
-                    }
-                }
-            }
-        }
+        DuplicateResultsViewer.Show(duplicateGroups, skippedFiles);
 
         return 0;
     }
@@ -511,101 +223,6 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
         var dir = Path.GetDirectoryName(filePath) ?? "";
         return dir[..Math.Min(remaining, dir.Length)] + "/..." + Path.DirectorySeparatorChar + fileName;
     }
-
-    private static void ShowSkippedFiles(List<(string Path, string Error)> skippedFiles)
-    {
-        var table = new Table();
-        table.Title = new TableTitle($"[bold yellow]Skipped Files ({skippedFiles.Count})[/]");
-        table.AddColumn(new TableColumn("[bold]Filename[/]").LeftAligned());
-        table.AddColumn(new TableColumn("[bold]Path[/]").LeftAligned());
-        table.AddColumn(new TableColumn("[bold]Error[/]").LeftAligned());
-
-        foreach (var (path, error) in skippedFiles)
-        {
-            var fileName = Path.GetFileName(path);
-            var directoryPath = Path.GetDirectoryName(path) ?? string.Empty;
-            table.AddRow(
-                Markup.Escape(fileName),
-                Markup.Escape(directoryPath),
-                Markup.Escape(error));
-        }
-
-        AnsiConsole.Write(table);
-
-        var escapedPathMap = skippedFiles.ToDictionary(
-            f => Markup.Escape(f.Path),
-            f => f.Path
-        );
-        var fileChoices = escapedPathMap.Keys.ToList();
-        fileChoices.Add("[yellow]Back[/]");
-        var selectedFileLabel = AnsiConsole.Prompt(
-            new SelectionPrompt<string>()
-                .Title("[bold]Select a file to open its location in Finder/Explorer, or Back:[/]")
-                .PageSize(15)
-                .AddChoices(fileChoices)
-        );
-
-        if (selectedFileLabel == "[yellow]Back[/]")
-        {
-            return;
-        }
-
-        var selectedFile = escapedPathMap[selectedFileLabel];
-
-        AnsiConsole.MarkupLine($"[blue]Opening location:[/] {Markup.Escape(selectedFile)}");
-        var directory = Path.GetDirectoryName(selectedFile);
-        if (!string.IsNullOrEmpty(directory))
-        {
-            try
-            {
-                var absPath = Path.GetFullPath(directory);
-                if (OperatingSystem.IsWindows())
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "explorer",
-                        Arguments = $"\"{absPath}\"",
-                        UseShellExecute = true
-                    });
-                }
-                else if (OperatingSystem.IsMacOS())
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "open",
-                        Arguments = $"\"{absPath}\"",
-                        UseShellExecute = true
-                    });
-                }
-                else if (OperatingSystem.IsLinux())
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "xdg-open",
-                        Arguments = $"'{absPath.Replace("'", "'\\''")}'",
-                        UseShellExecute = true
-                    });
-                }
-                else
-                {
-                    AnsiConsole.MarkupLine("[yellow]Cannot open folder: unsupported OS.[/]");
-                }
-            }
-            catch (Exception ex)
-            {
-                AnsiConsole.MarkupLine($"[red]Failed to open folder: {Markup.Escape(ex.Message)}[/]");
-            }
-        }
-    }
-
-    private static string ShortenHash(string hash)
-    {
-        if (hash.Length <= 15)
-        {
-            return hash;
-        }
-        return $"{hash[..6]}\u2026{hash[^6..]}";
-    }
 }
 
 /// <summary>
@@ -633,7 +250,9 @@ public sealed class FileSizeConverter : System.ComponentModel.TypeConverter
 
             // Try plain numeric (bytes)
             if (long.TryParse(text, out var plainBytes))
+            {
                 return plainBytes;
+            }
 
             // Try suffix match
             foreach (var (suffix, multiplier) in Suffixes.OrderByDescending(s => s.Key.Length))
