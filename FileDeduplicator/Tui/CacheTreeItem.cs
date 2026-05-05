@@ -61,7 +61,7 @@ public sealed class CacheTreeItem : IListWidgetItem
             }
 
             text.Append(arrow, new Style(Color.Grey));
-            text.Append(dirName, isHighlighted ? new Style(Color.Yellow) : new Style(Color.Blue));
+            text.Append(dirName, isHighlighted ? new Style(Color.DarkOrange) : new Style(Color.Blue));
 
             var staleInfo = StaleCount > 0 ? $", {StaleCount} stale" : "";
             text.Append($"  ({FileCount} files, {FormatFileSize(TotalSize)}{staleInfo})", new Style(Color.Grey));
@@ -73,7 +73,7 @@ public sealed class CacheTreeItem : IListWidgetItem
             Style? staleStyle = IsStale ? new Style(Color.Red) : (Style?)null;
 
             text.Append("  ", (Style?)null);
-            text.Append(fileName, isHighlighted ? new Style(Color.Yellow) : (Style?)null);
+            text.Append(fileName, isHighlighted ? new Style(Color.DarkOrange) : (Style?)null);
             if (IsStale)
             {
                 text.Append(staleMarker, staleStyle);

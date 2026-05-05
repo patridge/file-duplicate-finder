@@ -16,9 +16,9 @@ public sealed class FileDetailRow : ITableRow
 
     public Text[] CreateCells(bool isSelected)
     {
-        var nameStyle = isSelected ? new Style(Color.Yellow) : (Style?)null;
-        var sizeStyle = isSelected ? new Style(Color.Yellow) : new Style(Color.Blue);
-        var pathStyle = isSelected ? new Style(Color.Yellow) : new Style(Color.Grey);
+        var nameStyle = isSelected ? new Style(Color.DarkOrange) : (Style?)null;
+        var sizeStyle = isSelected ? new Style(Color.DarkOrange) : new Style(Color.Blue);
+        var pathStyle = isSelected ? new Style(Color.DarkOrange) : new Style(Color.Grey);
 
         var name = new Text();
         name.Append(Path.GetFileName(File.FilePath), nameStyle);

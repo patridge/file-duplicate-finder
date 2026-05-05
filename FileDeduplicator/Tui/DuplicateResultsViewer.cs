@@ -135,7 +135,7 @@ public static class DuplicateResultsViewer
 
         var groupList = new ListWidget<DuplicateGroupListItem>();
         groupList.Items.AddRange(groupItems);
-        groupList.HighlightStyle = new Style(Color.Yellow);
+        groupList.HighlightStyle = new Style(Color.DarkOrange);
         groupList.WrapAround = true;
         if (groupItems.Count > 0)
         {
@@ -213,7 +213,7 @@ public static class DuplicateResultsViewer
                 {
                     var scanStatus = getScanStatus?.Invoke() ?? "Scanning...";
                     ctx.Render(
-                        Paragraph.FromMarkup($"[yellow]{EscapeMarkup(scanStatus)}[/]", null).Centered(),
+                        Paragraph.FromMarkup($"[darkorange]{EscapeMarkup(scanStatus)}[/]", null).Centered(),
                         summaryArea);
                 }
                 else
@@ -234,7 +234,7 @@ public static class DuplicateResultsViewer
                         ctx.Render(
                             new BoxWidget()
                                 .Border(Border.Rounded)
-                                .MarkupTitle("[bold yellow]Duplicate Groups[/]")
+                                .MarkupTitle("[bold darkorange]Duplicate Groups[/]")
                                 .Inner(Paragraph.FromMarkup("[grey]Scanning for duplicates...[/]", null).Centered().AlignedMiddle()),
                             contentArea);
                         break;
@@ -242,12 +242,12 @@ public static class DuplicateResultsViewer
                         ctx.Render(
                             new BoxWidget()
                                 .Border(Border.Rounded)
-                                .MarkupTitle("[bold yellow]Duplicate Groups[/]")
+                                .MarkupTitle("[bold darkorange]Duplicate Groups[/]")
                                 .Inner(groupList),
                             contentArea);
                         break;
                     case ViewMode.FileDetail when fileTable != null && selectedGroup != null:
-                        var detailTitle = $"[bold yellow]{EscapeMarkup(selectedGroup.DisplayName)} \u2014 {selectedGroup.Files.Count} files[/]";
+                        var detailTitle = $"[bold darkorange]{EscapeMarkup(selectedGroup.DisplayName)} \u2014 {selectedGroup.Files.Count} files[/]";
                         ctx.Render(
                             new BoxWidget()
                                 .Border(Border.Rounded)
@@ -283,7 +283,7 @@ public static class DuplicateResultsViewer
                 };
                 if (statusMessage != null)
                 {
-                    help = $"[yellow]{EscapeMarkup(statusMessage)}[/]  |  {help}";
+                    help = $"[darkorange]{EscapeMarkup(statusMessage)}[/]  |  {help}";
                 }
                 ctx.Render(
                     Paragraph.FromMarkup(help, null).Centered().Style(new Style(Color.Grey)),
@@ -424,7 +424,7 @@ public static class DuplicateResultsViewer
             },
         ]);
         table.Rows.AddRange(rows);
-        table.HighlightStyle = new Style(Color.Yellow);
+        table.HighlightStyle = new Style(Color.DarkOrange);
         table.WrapAround = true;
         table.ShowHeader = true;
         table.SelectedIndex = 0;

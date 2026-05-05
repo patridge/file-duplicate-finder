@@ -20,7 +20,7 @@ public sealed class DuplicateGroupListItem : IListWidgetItem
     public Text CreateText(bool isSelected)
     {
         var text = new Text();
-        text.Append(GetDisplayName(), isSelected ? new Style(Color.Yellow) : (Style?)null);
+        text.Append(GetDisplayName(), isSelected ? new Style(Color.DarkOrange) : (Style?)null);
         text.Append($"  ({FormatFileSize(Files[0].FileSize)}, {Files.Count} files)", new Style(Color.Grey));
         text.Append($"  [{ShortenHash(Key)}]", new Style(Color.Grey));
         return text;

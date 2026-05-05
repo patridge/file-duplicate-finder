@@ -28,7 +28,7 @@ public static class CacheViewer
         };
 
         var treeList = new ListWidget<CacheTreeItem>();
-        treeList.HighlightStyle = new Style(Color.Yellow);
+        treeList.HighlightStyle = new Style(Color.DarkOrange);
         treeList.WrapAround = true;
 
         var allItems = BuildTreeItems(cache);
@@ -76,7 +76,7 @@ public static class CacheViewer
                     ctx.Render(
                         new BoxWidget()
                             .Border(Border.Rounded)
-                            .MarkupTitle("[bold yellow]Cache[/]")
+                            .MarkupTitle("[bold darkorange]Cache[/]")
                             .Inner(Paragraph.FromMarkup("[grey]Cache is empty.[/]", null).Centered().AlignedMiddle()),
                         contentArea);
                 }
@@ -85,7 +85,7 @@ public static class CacheViewer
                     ctx.Render(
                         new BoxWidget()
                             .Border(Border.Rounded)
-                            .MarkupTitle("[bold yellow]Cache[/]")
+                            .MarkupTitle("[bold darkorange]Cache[/]")
                             .Inner(treeList),
                         contentArea);
                 }
@@ -97,7 +97,7 @@ public static class CacheViewer
                            "[bold]N[/] Select None  [bold]T[/] Select Stale  [bold]Q[/] Quit";
                 if (statusMessage != null)
                 {
-                    help = $"[yellow]{EscapeMarkup(statusMessage)}[/]  |  {help}";
+                    help = $"[darkorange]{EscapeMarkup(statusMessage)}[/]  |  {help}";
                 }
                 ctx.Render(
                     Paragraph.FromMarkup(help, null).Centered().Style(new Style(Color.Grey)),
