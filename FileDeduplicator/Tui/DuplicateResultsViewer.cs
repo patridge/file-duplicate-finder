@@ -13,6 +13,7 @@ public static class DuplicateResultsViewer
 {
     private enum ViewMode
     {
+        Scanning,
         GroupList,
         FileDetail,
     }
@@ -27,13 +28,96 @@ public static class DuplicateResultsViewer
         List<(string Key, List<FileDetails> Files)> duplicateGroups,
         List<(string Path, string Error)> skippedFiles)
     {
+        RunViewer(duplicateGroups, skippedFiles, scanComplete: true);
+    }
+
+    public static void ShowWithScan(
+        FileScanner scanner,
+        string[] paths,
+        long minSizeBytes,
+        IFileComparer[]? comparers,
+        string[] excludePaths,
+        string[] excludeExtensions,
+        string[] excludeFileNames)
+    {
+        var duplicateGroups = new List<(string Key, List<FileDetails> Files)>();
+        var skippedFiles = new List<(string Path, string Error)>();
+
+        // Shared scan state (written by background thread, read by render loop)
+        var scanProgress = 0d;
+        var scanStatusText = "Discovering files...";
+        var scanComplete = false;
+
+        var scanThread = new Thread(() =>
+        {
+            var rawGroups = scanner.ScanDirectoriesForDuplicateGroups(
+                paths,
+                minSizeBytes,
+                comparers,
+                excludePaths: excludePaths,
+                excludeExtensions: excludeExtensions,
+                excludeFileNames: excludeFileNames,
+                onStatus: message =>
+                {
+                    scanStatusText = message.Length > 80 ? message[..77] + "..." : message;
+                },
+                onProgress: (pct, message) =>
+                {
+                    if (pct < 0)
+                    {
+                        scanProgress = -1;
+                        scanStatusText = message.Length > 80 ? message[..77] + "..." : message;
+                    }
+                    else
+                    {
+                        scanProgress = pct;
+                        scanStatusText = $"Hashing: {ShortenPath(message, 60)}";
+                    }
+                },
+                onFileSkipped: (path, error) =>
+                {
+                    skippedFiles.Add((path, error));
+                }
+            );
+
+            var groups = (rawGroups ?? [])
+                .Select(g =>
+                {
+                    g.Sort((a, b) => string.Compare(a.FilePath, b.FilePath, StringComparison.OrdinalIgnoreCase));
+                    return (Key: g[0].Sha256Hash.ToHexString(), Files: g);
+                })
+                .OrderByDescending(g => g.Files[0].FileSize)
+                .ToList();
+
+            duplicateGroups.AddRange(groups);
+            scanComplete = true;
+        })
+        {
+            IsBackground = true,
+        };
+
+        scanThread.Start();
+        RunViewer(duplicateGroups, skippedFiles, scanComplete: false,
+            getScanComplete: () => scanComplete,
+            getScanProgress: () => scanProgress,
+            getScanStatus: () => scanStatusText);
+    }
+
+    private static void RunViewer(
+        List<(string Key, List<FileDetails> Files)> duplicateGroups,
+        List<(string Path, string Error)> skippedFiles,
+        bool scanComplete,
+        Func<bool>? getScanComplete = null,
+        Func<double>? getScanProgress = null,
+        Func<string>? getScanStatus = null)
+    {
         Console.OutputEncoding = Encoding.Unicode;
         using var terminal = Terminal.Create();
         var renderer = new Renderer(terminal);
         renderer.SetTargetFps(30);
 
         var running = true;
-        var mode = ViewMode.GroupList;
+        var mode = scanComplete ? ViewMode.GroupList : ViewMode.Scanning;
         var sortOrder = SortOrder.Size;
         string? statusMessage = null;
         DateTime statusExpiry = DateTime.MinValue;
@@ -53,22 +137,55 @@ public static class DuplicateResultsViewer
         groupList.Items.AddRange(groupItems);
         groupList.HighlightStyle = new Style(Color.Yellow);
         groupList.WrapAround = true;
-        groupList.SelectedIndex = 0;
+        if (groupItems.Count > 0)
+        {
+            groupList.SelectedIndex = 0;
+        }
+
+        // Spinner for scanning phase
+        var spinner = new SpinnerWidget().Kind(SpinnerKind.Default);
+
+        // Progress bar for scanning phase
+        var scanProgressBar = new ProgressBarWidget()
+            .Value(0).Max(100)
+            .Foreground(ProgressBarBrush.Solid(new Style(Color.Green)))
+            .Percentage()
+            .Smooth();
 
         // File detail state
         TableWidget<FileDetailRow>? fileTable = null;
         DuplicateGroupListItem? selectedGroup = null;
 
-        var totalWastedBytes = duplicateGroups.Sum(g => g.Files[0].FileSize * (g.Files.Count - 1));
-
         var layout = new Layout("Root").SplitRows(
             new Layout("Title").Size(1),
             new Layout("Summary").Size(1),
             new Layout("Content"),
+            new Layout("Progress").Size(2),
             new Layout("Status").Size(1));
 
         while (running)
         {
+            // Check if scan just completed
+            if (mode == ViewMode.Scanning && (getScanComplete?.Invoke() ?? true))
+            {
+                // Rebuild group list from newly populated data
+                groupItems.Clear();
+                groupItems.AddRange(
+                    duplicateGroups.Select(g => new DuplicateGroupListItem(g.Key, g.Files)));
+                groupList.Items.Clear();
+                groupList.Items.AddRange(groupItems);
+                if (groupItems.Count > 0)
+                {
+                    groupList.SelectedIndex = 0;
+                }
+                mode = ViewMode.GroupList;
+
+                if (duplicateGroups.Count == 0)
+                {
+                    SetStatus(ref statusMessage, ref statusExpiry, "No duplicate files found.");
+                }
+            }
+
             renderer.Draw((ctx, info) =>
             {
                 if (statusMessage != null && DateTime.UtcNow > statusExpiry)
@@ -76,9 +193,14 @@ public static class DuplicateResultsViewer
                     statusMessage = null;
                 }
 
+                // Update spinner for scanning phase
+                spinner.Update(info);
+                scanProgressBar.Update(info);
+
                 var titleArea = layout.GetArea(ctx, "Title");
                 var summaryArea = layout.GetArea(ctx, "Summary");
                 var contentArea = layout.GetArea(ctx, "Content");
+                var progressArea = layout.GetArea(ctx, "Progress");
                 var statusArea = layout.GetArea(ctx, "Status");
 
                 // Title
@@ -87,16 +209,35 @@ public static class DuplicateResultsViewer
                     titleArea);
 
                 // Summary
-                var sortLabel = sortOrder == SortOrder.Size ? "size" : "path";
-                var skippedSuffix = skippedFiles.Count > 0 ? $" | {skippedFiles.Count} skipped" : "";
-                var summary = $"[green]{duplicateGroups.Count} group(s) | Potential Savings: {FormatFileSize(totalWastedBytes)} | Sort: {sortLabel}{skippedSuffix}[/]";
-                ctx.Render(
-                    Paragraph.FromMarkup(summary, null).Centered(),
-                    summaryArea);
+                if (mode == ViewMode.Scanning)
+                {
+                    var scanStatus = getScanStatus?.Invoke() ?? "Scanning...";
+                    ctx.Render(
+                        Paragraph.FromMarkup($"[yellow]{EscapeMarkup(scanStatus)}[/]", null).Centered(),
+                        summaryArea);
+                }
+                else
+                {
+                    var sortLabel = sortOrder == SortOrder.Size ? "size" : "path";
+                    var skippedSuffix = skippedFiles.Count > 0 ? $" | {skippedFiles.Count} skipped" : "";
+                    var totalWastedBytes = duplicateGroups.Sum(g => g.Files[0].FileSize * (g.Files.Count - 1));
+                    var summary = $"[green]{duplicateGroups.Count} group(s) | Potential Savings: {FormatFileSize(totalWastedBytes)} | Sort: {sortLabel}{skippedSuffix}[/]";
+                    ctx.Render(
+                        Paragraph.FromMarkup(summary, null).Centered(),
+                        summaryArea);
+                }
 
                 // Content
                 switch (mode)
                 {
+                    case ViewMode.Scanning:
+                        ctx.Render(
+                            new BoxWidget()
+                                .Border(Border.Rounded)
+                                .MarkupTitle("[bold yellow]Duplicate Groups[/]")
+                                .Inner(Paragraph.FromMarkup("[grey]Scanning for duplicates...[/]", null).Centered().AlignedMiddle()),
+                            contentArea);
+                        break;
                     case ViewMode.GroupList:
                         ctx.Render(
                             new BoxWidget()
@@ -116,9 +257,26 @@ public static class DuplicateResultsViewer
                         break;
                 }
 
+                // Progress bar (visible during scanning)
+                if (mode == ViewMode.Scanning)
+                {
+                    var pct = getScanProgress?.Invoke() ?? 0;
+                    if (pct < 0)
+                    {
+                        // Indeterminate — show spinner in progress area
+                        ctx.Render(spinner, progressArea);
+                    }
+                    else
+                    {
+                        scanProgressBar.Value = pct;
+                        ctx.Render(scanProgressBar, progressArea);
+                    }
+                }
+
                 // Status bar
                 var help = mode switch
                 {
+                    ViewMode.Scanning => "[bold]Q[/] Quit",
                     ViewMode.GroupList => "[bold]\u2191\u2193[/] Navigate  [bold]Enter[/] View Files  [bold]S[/] Sort  [bold]Q[/] Quit",
                     ViewMode.FileDetail => "[bold]\u2191\u2193[/] Navigate  [bold]Enter[/] Open Location  [bold]R[/] Refresh  [bold]Esc[/] Back  [bold]Q[/] Quit",
                     _ => "",
@@ -212,8 +370,6 @@ public static class DuplicateResultsViewer
                             fileTable = CreateFileTable(selectedGroup.Files);
                             SetStatus(ref statusMessage, ref statusExpiry, $"Refreshed \u2014 removed {removedCount} file(s)");
                         }
-
-                        totalWastedBytes = duplicateGroups.Sum(g => g.Files[0].FileSize * (g.Files.Count - 1));
 
                         if (duplicateGroups.Count == 0)
                         {
@@ -362,5 +518,25 @@ public static class DuplicateResultsViewer
     private static string EscapeMarkup(string text)
     {
         return text.Replace("[", "[[").Replace("]", "]]");
+    }
+
+    private static string ShortenPath(string filePath, int maxLength)
+    {
+        if (string.IsNullOrEmpty(filePath) || filePath.Length <= maxLength)
+        {
+            return filePath;
+        }
+        var fileName = Path.GetFileName(filePath);
+        if (string.IsNullOrEmpty(fileName) || fileName.Length >= maxLength - 4)
+        {
+            return "..." + filePath[^Math.Min(maxLength - 3, filePath.Length)..];
+        }
+        var remaining = maxLength - fileName.Length - 5;
+        if (remaining <= 0)
+        {
+            return "..." + Path.DirectorySeparatorChar + fileName;
+        }
+        var dir = Path.GetDirectoryName(filePath) ?? "";
+        return dir[..Math.Min(remaining, dir.Length)] + "/..." + Path.DirectorySeparatorChar + fileName;
     }
 }

@@ -118,75 +118,14 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             ? [new AudioFileComparer(), new ImageFileComparer(), new BinaryFileComparer { IgnoreMetadata = true }]
             : null;
 
-        List<List<FileDetails>>? rawGroups = null;
-        var skippedFiles = new List<(string Path, string Error)>();
-
-        AnsiConsole.Progress()
-            .AutoClear(true)
-            .Columns(
-                new TaskDescriptionColumn { Alignment = Justify.Left },
-                new ProgressBarColumn(),
-                new PercentageColumn(),
-                new SpinnerColumn()
-            )
-            .Start(ctx =>
-            {
-                var task = ctx.AddTask("Discovering files...", autoStart: true, maxValue: 100);
-                task.IsIndeterminate = true;
-
-                rawGroups = scanner.ScanDirectoriesForDuplicateGroups(
-                    paths,
-                    settings.MinSizeBytes,
-                    comparers,
-                    excludePaths: excludePaths,
-                    excludeExtensions: excludeExtensions,
-                    excludeFileNames: excludeFileNames,
-                    onStatus: message =>
-                    {
-                        task.Description = Markup.Escape(message);
-                    },
-                    onProgress: (pct, message) =>
-                    {
-                        if (pct < 0)
-                        {
-                            // Discovery phase (indeterminate) — message is a status string, not a path
-                            task.IsIndeterminate = true;
-                            task.Description = Markup.Escape(message.Length > 80 ? message[..77] + "..." : message);
-                        }
-                        else
-                        {
-                            // Hashing phase (determinate) — message is a file path
-                            task.IsIndeterminate = false;
-                            task.Value = pct;
-                            task.Description = Markup.Escape($"Hashing: {ShortenPath(message, 60)}");
-                        }
-                    },
-                    onFileSkipped: (path, error) =>
-                    {
-                        skippedFiles.Add((path, error));
-                    }
-                );
-            });
-
-        var duplicateGroups = (rawGroups ?? [])
-        .Select(g =>
-        {
-            g.Sort((a, b) => string.Compare(a.FilePath, b.FilePath, StringComparison.OrdinalIgnoreCase));
-            return (Key: g[0].Sha256Hash.ToHexString(), Files: g);
-        })
-        .OrderByDescending(g => g.Files[0].FileSize)
-        .ToList();
-
-        if (duplicateGroups.Count == 0)
-        {
-            AnsiConsole.MarkupLine("[green]No duplicate files found.[/]");
-            if (skippedFiles.Count > 0)
-            {
-                AnsiConsole.MarkupLine($"[yellow]{skippedFiles.Count} file(s) could not be scanned.[/]");
-            }
-            return 0;
-        }
-        DuplicateResultsViewer.Show(duplicateGroups, skippedFiles);
+        DuplicateResultsViewer.ShowWithScan(
+            scanner,
+            paths,
+            settings.MinSizeBytes,
+            comparers,
+            excludePaths,
+            excludeExtensions,
+            excludeFileNames);
 
         return 0;
     }
@@ -202,26 +141,6 @@ public sealed class FindDuplicatesCommand : Command<FindDuplicatesCommand.Settin
             suffixIndex++;
         }
         return $"{size:0.##} {suffixes[suffixIndex]}";
-    }
-
-    private static string ShortenPath(string filePath, int maxLength)
-    {
-        if (string.IsNullOrEmpty(filePath) || filePath.Length <= maxLength)
-        {
-            return filePath;
-        }
-        var fileName = Path.GetFileName(filePath);
-        if (string.IsNullOrEmpty(fileName) || fileName.Length >= maxLength - 4)
-        {
-            return "..." + filePath[^Math.Min(maxLength - 3, filePath.Length)..];
-        }
-        var remaining = maxLength - fileName.Length - 5; // 5 = "/..." + separator
-        if (remaining <= 0)
-        {
-            return "..." + Path.DirectorySeparatorChar + fileName;
-        }
-        var dir = Path.GetDirectoryName(filePath) ?? "";
-        return dir[..Math.Min(remaining, dir.Length)] + "/..." + Path.DirectorySeparatorChar + fileName;
     }
 }
 
