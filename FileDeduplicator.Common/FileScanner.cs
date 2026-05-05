@@ -72,7 +72,8 @@ namespace FileDeduplicator.Common
             string[]? excludeFileNames = null,
             Action<string>? onStatus = null,
             Action<double, string>? onProgress = null,
-            Action<string, string>? onFileSkipped = null)
+            Action<string, string>? onFileSkipped = null,
+            Action<List<FileDetails>>? onDuplicateGroupFound = null)
         {
             var normalizedExcludes = (excludePaths ?? [])
                 .Select(p => Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar)
@@ -110,7 +111,8 @@ namespace FileDeduplicator.Common
                     if (totalFound % 500 == 0)
                     {
                         var dir = Path.GetDirectoryName(filePath) ?? filePath;
-                        onProgress?.Invoke(-1, $"Discovering files... {candidates.Count} matched, {totalFound} found ({dir})");
+                        var prefix = $"Discovering files... {candidates.Count} matched, {totalFound} found";
+                        onProgress?.Invoke(-1, $"{prefix} ({dir})");
                     }
                 }
             }
@@ -234,7 +236,11 @@ namespace FileDeduplicator.Common
                         }
                     }
 
-                    allGroups.AddRange(groups.Where(g => g.Count > 1));
+                    foreach (var group in groups.Where(g => g.Count > 1))
+                    {
+                        allGroups.Add(group);
+                        onDuplicateGroupFound?.Invoke(group);
+                    }
                 }
 
                 return allGroups;
@@ -242,11 +248,18 @@ namespace FileDeduplicator.Common
             else
             {
                 // Hash-based grouping (exact match)
-                return fileDetailsByPath.Values
+                var allGroups = fileDetailsByPath.Values
                     .GroupBy(f => f.Sha256Hash.ToHexString())
                     .Where(g => g.Count() > 1)
                     .Select(g => g.ToList())
                     .ToList();
+
+                foreach (var group in allGroups)
+                {
+                    onDuplicateGroupFound?.Invoke(group);
+                }
+
+                return allGroups;
             }
         }
 

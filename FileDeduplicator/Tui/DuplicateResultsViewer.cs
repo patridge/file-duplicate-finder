@@ -42,6 +42,7 @@ public static class DuplicateResultsViewer
     {
         var duplicateGroups = new List<(string Key, List<FileDetails> Files)>();
         var skippedFiles = new List<(string Path, string Error)>();
+        var groupsLock = new object();
 
         // Shared scan state (written by background thread, read by render loop)
         var scanProgress = 0d;
@@ -50,7 +51,7 @@ public static class DuplicateResultsViewer
 
         var scanThread = new Thread(() =>
         {
-            var rawGroups = scanner.ScanDirectoriesForDuplicateGroups(
+            scanner.ScanDirectoriesForDuplicateGroups(
                 paths,
                 minSizeBytes,
                 comparers,
@@ -59,14 +60,14 @@ public static class DuplicateResultsViewer
                 excludeFileNames: excludeFileNames,
                 onStatus: message =>
                 {
-                    scanStatusText = message.Length > 80 ? message[..77] + "..." : message;
+                    scanStatusText = TruncateMiddle(message, 80);
                 },
                 onProgress: (pct, message) =>
                 {
                     if (pct < 0)
                     {
                         scanProgress = -1;
-                        scanStatusText = TruncateMiddle(message, 80);
+                        scanStatusText = message.Length > 80 ? message[..77] + "..." : message;
                     }
                     else
                     {
@@ -77,19 +78,18 @@ public static class DuplicateResultsViewer
                 onFileSkipped: (path, error) =>
                 {
                     skippedFiles.Add((path, error));
+                },
+                onDuplicateGroupFound: group =>
+                {
+                    group.Sort((a, b) => string.Compare(a.FilePath, b.FilePath, StringComparison.OrdinalIgnoreCase));
+                    var entry = (Key: group[0].Sha256Hash.ToHexString(), Files: group);
+                    lock (groupsLock)
+                    {
+                        duplicateGroups.Add(entry);
+                    }
                 }
             );
 
-            var groups = (rawGroups ?? [])
-                .Select(g =>
-                {
-                    g.Sort((a, b) => string.Compare(a.FilePath, b.FilePath, StringComparison.OrdinalIgnoreCase));
-                    return (Key: g[0].Sha256Hash.ToHexString(), Files: g);
-                })
-                .OrderByDescending(g => g.Files[0].FileSize)
-                .ToList();
-
-            duplicateGroups.AddRange(groups);
             scanComplete = true;
         })
         {
@@ -100,7 +100,8 @@ public static class DuplicateResultsViewer
         RunViewer(duplicateGroups, skippedFiles, scanComplete: false,
             getScanComplete: () => scanComplete,
             getScanProgress: () => scanProgress,
-            getScanStatus: () => scanStatusText);
+            getScanStatus: () => scanStatusText,
+            groupsLock: groupsLock);
     }
 
     private static void RunViewer(
@@ -109,7 +110,8 @@ public static class DuplicateResultsViewer
         bool scanComplete,
         Func<bool>? getScanComplete = null,
         Func<double>? getScanProgress = null,
-        Func<string>? getScanStatus = null)
+        Func<string>? getScanStatus = null,
+        object? groupsLock = null)
     {
         Console.OutputEncoding = Encoding.Unicode;
         using var terminal = Terminal.Create();
@@ -121,6 +123,7 @@ public static class DuplicateResultsViewer
         var sortOrder = SortOrder.Size;
         string? statusMessage = null;
         DateTime statusExpiry = DateTime.MinValue;
+        int lastKnownGroupCount = 0;
 
         Console.CancelKeyPress += (s, e) =>
         {
@@ -165,19 +168,56 @@ public static class DuplicateResultsViewer
 
         while (running)
         {
+            // Sync new groups from background thread into the list widget
+            if (mode == ViewMode.Scanning || mode == ViewMode.GroupList)
+            {
+                int currentCount;
+                if (groupsLock != null)
+                {
+                    lock (groupsLock)
+                    {
+                        currentCount = duplicateGroups.Count;
+                    }
+                }
+                else
+                {
+                    currentCount = duplicateGroups.Count;
+                }
+
+                if (currentCount > lastKnownGroupCount)
+                {
+                    List<(string Key, List<FileDetails> Files)> newGroups;
+                    if (groupsLock != null)
+                    {
+                        lock (groupsLock)
+                        {
+                            newGroups = duplicateGroups.Skip(lastKnownGroupCount).ToList();
+                        }
+                    }
+                    else
+                    {
+                        newGroups = duplicateGroups.Skip(lastKnownGroupCount).ToList();
+                    }
+
+                    foreach (var g in newGroups)
+                    {
+                        var item = new DuplicateGroupListItem(g.Key, g.Files);
+                        groupItems.Add(item);
+                        groupList.Items.Add(item);
+                    }
+
+                    if (groupList.Items.Count > 0 && lastKnownGroupCount == 0)
+                    {
+                        groupList.SelectedIndex = 0;
+                    }
+
+                    lastKnownGroupCount = currentCount;
+                }
+            }
+
             // Check if scan just completed
             if (mode == ViewMode.Scanning && (getScanComplete?.Invoke() ?? true))
             {
-                // Rebuild group list from newly populated data
-                groupItems.Clear();
-                groupItems.AddRange(
-                    duplicateGroups.Select(g => new DuplicateGroupListItem(g.Key, g.Files)));
-                groupList.Items.Clear();
-                groupList.Items.AddRange(groupItems);
-                if (groupItems.Count > 0)
-                {
-                    groupList.SelectedIndex = 0;
-                }
                 mode = ViewMode.GroupList;
 
                 if (duplicateGroups.Count == 0)
@@ -231,12 +271,25 @@ public static class DuplicateResultsViewer
                 switch (mode)
                 {
                     case ViewMode.Scanning:
-                        ctx.Render(
-                            new BoxWidget()
-                                .Border(Border.Rounded)
-                                .MarkupTitle("[bold darkorange]Duplicate Groups[/]")
-                                .Inner(Paragraph.FromMarkup("[grey]Scanning for duplicates...[/]", null).Centered().AlignedMiddle()),
-                            contentArea);
+                        var scanTitle = $"[bold darkorange]Duplicate Groups[/]  [dim]({groupList.Items.Count} found so far \u2014 scanning...)[/]";
+                        if (groupList.Items.Count > 0)
+                        {
+                            ctx.Render(
+                                new BoxWidget()
+                                    .Border(Border.Rounded)
+                                    .MarkupTitle(scanTitle)
+                                    .Inner(groupList),
+                                contentArea);
+                        }
+                        else
+                        {
+                            ctx.Render(
+                                new BoxWidget()
+                                    .Border(Border.Rounded)
+                                    .MarkupTitle(scanTitle)
+                                    .Inner(Paragraph.FromMarkup("[grey]Scanning for duplicates...[/]", null).Centered().AlignedMiddle()),
+                                contentArea);
+                        }
                         break;
                     case ViewMode.GroupList:
                         ctx.Render(
@@ -276,7 +329,7 @@ public static class DuplicateResultsViewer
                 // Status bar
                 var help = mode switch
                 {
-                    ViewMode.Scanning => "[bold]Q[/] Quit",
+                    ViewMode.Scanning => "[bold]\u2191\u2193[/] Navigate  [bold]Enter[/] View Files  [bold]Q[/] Quit",
                     ViewMode.GroupList => "[bold]\u2191\u2193[/] Navigate  [bold]Enter[/] View Files  [bold]S[/] Sort  [bold]Q[/] Quit",
                     ViewMode.FileDetail => "[bold]\u2191\u2193[/] Navigate  [bold]Enter[/] Open Location  [bold]R[/] Refresh  [bold]Esc[/] Back  [bold]Q[/] Quit",
                     _ => "",
@@ -302,7 +355,7 @@ public static class DuplicateResultsViewer
                     running = false;
                     break;
                 case ConsoleKey.UpArrow:
-                    if (mode == ViewMode.GroupList)
+                    if (mode == ViewMode.GroupList || mode == ViewMode.Scanning)
                     {
                         groupList.MoveUp();
                     }
@@ -312,7 +365,7 @@ public static class DuplicateResultsViewer
                     }
                     break;
                 case ConsoleKey.DownArrow:
-                    if (mode == ViewMode.GroupList)
+                    if (mode == ViewMode.GroupList || mode == ViewMode.Scanning)
                     {
                         groupList.MoveDown();
                     }
@@ -322,7 +375,7 @@ public static class DuplicateResultsViewer
                     }
                     break;
                 case ConsoleKey.Enter:
-                    if (mode == ViewMode.GroupList && groupList.SelectedItem != null)
+                    if ((mode == ViewMode.GroupList || mode == ViewMode.Scanning) && groupList.SelectedItem != null)
                     {
                         selectedGroup = groupList.SelectedItem;
                         fileTable = CreateFileTable(selectedGroup.Files);
@@ -337,7 +390,7 @@ public static class DuplicateResultsViewer
                 case ConsoleKey.Backspace:
                     if (mode == ViewMode.FileDetail)
                     {
-                        mode = ViewMode.GroupList;
+                        mode = (getScanComplete?.Invoke() ?? true) ? ViewMode.GroupList : ViewMode.Scanning;
                         fileTable = null;
                         selectedGroup = null;
                     }
