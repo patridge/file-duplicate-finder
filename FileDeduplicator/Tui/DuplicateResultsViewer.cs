@@ -505,18 +505,29 @@ public static class DuplicateResultsViewer
     {
         var removedCount = 0;
         var originalHash = group.Key;
+
+        // Phase 1: Remove files that no longer exist
         for (int i = group.Files.Count - 1; i >= 0; i--)
         {
-            var file = group.Files[i];
-            if (!File.Exists(file.FilePath))
+            if (!File.Exists(group.Files[i].FilePath))
             {
                 group.Files.RemoveAt(i);
                 removedCount++;
-                continue;
             }
+        }
+
+        // If fewer than 2 files remain, no point in re-hashing
+        if (group.Files.Count < 2)
+        {
+            return removedCount;
+        }
+
+        // Phase 2: Re-hash remaining files and remove any that no longer match
+        for (int i = group.Files.Count - 1; i >= 0; i--)
+        {
             try
             {
-                var currentHash = FileHelpers.GetFileSha256(file.FilePath).ToHexString();
+                var currentHash = FileHelpers.GetFileSha256(group.Files[i].FilePath).ToHexString();
                 if (currentHash != originalHash)
                 {
                     group.Files.RemoveAt(i);
@@ -529,6 +540,7 @@ public static class DuplicateResultsViewer
                 removedCount++;
             }
         }
+
         return removedCount;
     }
 
