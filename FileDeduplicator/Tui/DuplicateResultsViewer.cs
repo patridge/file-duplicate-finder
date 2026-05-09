@@ -127,6 +127,9 @@ public static class DuplicateResultsViewer
         string? statusMessage = null;
         DateTime statusExpiry = DateTime.MinValue;
         int lastKnownGroupCount = 0;
+        var refreshing = false;
+        var refreshComplete = false;
+        var refreshRemovedCount = 0;
 
         Console.CancelKeyPress += (s, e) =>
         {
@@ -229,6 +232,38 @@ public static class DuplicateResultsViewer
                 }
             }
 
+            // Check if refresh just completed
+            if (refreshComplete)
+            {
+                refreshComplete = false;
+                refreshing = false;
+
+                if (selectedGroup != null && selectedGroup.Files.Count < 2)
+                {
+                    groupItems.Remove(selectedGroup);
+                    groupList.Items.Remove(selectedGroup);
+                    duplicateGroups.RemoveAll(g => g.Key == selectedGroup.Key);
+
+                    mode = ViewMode.GroupList;
+                    fileTable = null;
+                    selectedGroup = null;
+                    SetStatus(ref statusMessage, ref statusExpiry, "Group removed (no longer has duplicates)");
+                }
+                else
+                {
+                    if (selectedGroup != null)
+                    {
+                        fileTable = CreateFileTable(selectedGroup.Files);
+                    }
+                    SetStatus(ref statusMessage, ref statusExpiry, $"Refreshed \u2014 removed {refreshRemovedCount} file(s)");
+                }
+
+                if (duplicateGroups.Count == 0)
+                {
+                    running = false;
+                }
+            }
+
             renderer.Draw((ctx, info) =>
             {
                 if (statusMessage != null && DateTime.UtcNow > statusExpiry)
@@ -313,7 +348,7 @@ public static class DuplicateResultsViewer
                         break;
                 }
 
-                // Progress bar (visible during scanning)
+                // Progress bar (visible during scanning or refreshing)
                 if (mode == ViewMode.Scanning)
                 {
                     var pct = getScanProgress?.Invoke() ?? 0;
@@ -327,6 +362,10 @@ public static class DuplicateResultsViewer
                         scanProgressBar.Value = pct;
                         ctx.Render(scanProgressBar, progressArea);
                     }
+                }
+                else if (refreshing)
+                {
+                    ctx.Render(spinner, progressArea);
                 }
 
                 // Status bar
@@ -386,7 +425,15 @@ public static class DuplicateResultsViewer
                     }
                     else if (mode == ViewMode.FileDetail && fileTable?.SelectedItem != null)
                     {
-                        OpenFileLocation(fileTable.SelectedItem.File.FilePath);
+                        var filePath = fileTable.SelectedItem.File.FilePath;
+                        if (File.Exists(filePath))
+                        {
+                            OpenFileLocation(filePath);
+                        }
+                        else
+                        {
+                            SetStatus(ref statusMessage, ref statusExpiry, "File no longer exists");
+                        }
                     }
                     break;
                 case ConsoleKey.Escape:
@@ -421,30 +468,18 @@ public static class DuplicateResultsViewer
                     }
                     break;
                 case ConsoleKey.R:
-                    if (mode == ViewMode.FileDetail && selectedGroup != null)
+                    if (mode == ViewMode.FileDetail && selectedGroup != null && !refreshing)
                     {
-                        var removedCount = RefreshGroup(selectedGroup);
-                        if (selectedGroup.Files.Count < 2)
+                        refreshing = true;
+                        var groupToRefresh = selectedGroup;
+                        new Thread(() =>
                         {
-                            groupItems.Remove(selectedGroup);
-                            groupList.Items.Remove(selectedGroup);
-                            duplicateGroups.RemoveAll(g => g.Key == selectedGroup.Key);
-
-                            mode = ViewMode.GroupList;
-                            fileTable = null;
-                            selectedGroup = null;
-                            SetStatus(ref statusMessage, ref statusExpiry, "Group removed (no longer has duplicates)");
-                        }
-                        else
+                            refreshRemovedCount = RefreshGroup(groupToRefresh);
+                            refreshComplete = true;
+                        })
                         {
-                            fileTable = CreateFileTable(selectedGroup.Files);
-                            SetStatus(ref statusMessage, ref statusExpiry, $"Refreshed \u2014 removed {removedCount} file(s)");
-                        }
-
-                        if (duplicateGroups.Count == 0)
-                        {
-                            running = false;
-                        }
+                            IsBackground = true,
+                        }.Start();
                     }
                     break;
             }
