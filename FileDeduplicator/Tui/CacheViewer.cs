@@ -13,11 +13,36 @@ public static class CacheViewer
     public static void Show(FileHashCache cache)
     {
         Console.OutputEncoding = Encoding.Unicode;
+        try
+        {
+            ShowInternal(cache);
+        }
+        catch (Exception ex)
+        {
+            // Ensure the error is visible even if the terminal is in a broken state.
+            Console.Error.WriteLine($"CacheViewer error: {ex}");
+            throw;
+        }
+    }
+
+    private static void ShowInternal(FileHashCache cache)
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), "cacheviewer-debug.log");
+        File.WriteAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] ShowInternal entered\n");
+        void Log(string msg) => File.AppendAllText(logPath, $"[{DateTime.Now:HH:mm:ss.fff}] {msg}\n");
+
+        Log($"Cache has {cache.Count} entries");
+
+        Log("Creating terminal...");
         using var terminal = Terminal.Create();
+        Log("Terminal created");
+
         var renderer = new Renderer(terminal);
         renderer.SetTargetFps(30);
+        Log("Renderer created");
 
         var running = true;
+        var loading = true;
         string? statusMessage = null;
         DateTime statusExpiry = DateTime.MinValue;
 
@@ -31,8 +56,25 @@ public static class CacheViewer
         treeList.HighlightStyle = new Style(Color.DarkOrange);
         treeList.WrapAround = true;
 
-        var allItems = BuildTreeItems(cache);
-        RebuildVisibleList(treeList, allItems);
+        var allItems = new List<CacheTreeItem>();
+
+        // Build tree items on a background thread so the TUI is responsive immediately
+        Log("Building tree items on background thread...");
+        var buildThread = new Thread(() =>
+        {
+            var built = BuildTreeItems(cache);
+            allItems = built;
+            loading = false;
+            Log($"Built {built.Count} tree items");
+        })
+        {
+            IsBackground = true,
+            Name = "CacheTreeBuilder",
+        };
+        buildThread.Start();
+
+        var spinner = new SpinnerWidget().Kind(SpinnerKind.Default);
+        Log("Entering render loop");
 
         var layout = new Layout("Root").SplitRows(
             new Layout("Title").Size(1),
@@ -42,6 +84,13 @@ public static class CacheViewer
 
         while (running)
         {
+            // Once loading finishes, populate the list once
+            if (!loading && treeList.Items.Count == 0 && allItems.Count > 0)
+            {
+                RebuildVisibleList(treeList, allItems);
+                Log("Visible list built from background thread results");
+            }
+
             renderer.Draw((ctx, info) =>
             {
                 if (statusMessage != null && DateTime.UtcNow > statusExpiry)
@@ -60,18 +109,36 @@ public static class CacheViewer
                     titleArea);
 
                 // Summary
-                var totalEntries = allItems.Count(i => !i.IsDirectory);
-                var staleEntries = allItems.Count(i => !i.IsDirectory && i.IsStale);
-                var selectedCount = allItems.Count(i => i.IsSelected);
-                var selectedInfo = selectedCount > 0 ? $" | [green]{selectedCount} selected[/]" : "";
-                var staleInfo = staleEntries > 0 ? $" | [red]{staleEntries} stale[/]" : "";
-                var summaryText = $"[green]{totalEntries} cached file(s){staleInfo}{selectedInfo}[/]";
+                string summaryText;
+                if (loading)
+                {
+                    summaryText = $"[grey]Loading {cache.Count:N0} cached entries...[/]";
+                }
+                else
+                {
+                    var totalEntries = allItems.Count(i => !i.IsDirectory);
+                    var staleEntries = allItems.Count(i => !i.IsDirectory && i.IsStale);
+                    var selectedCount = allItems.Count(i => i.IsSelected);
+                    var selectedInfo = selectedCount > 0 ? $" | [green]{selectedCount} selected[/]" : "";
+                    var staleInfo = staleEntries > 0 ? $" | [red]{staleEntries} stale[/]" : "";
+                    summaryText = $"[green]{totalEntries} cached file(s){staleInfo}{selectedInfo}[/]";
+                }
                 ctx.Render(
                     Paragraph.FromMarkup(summaryText, null).Centered(),
                     summaryArea);
 
                 // Content
-                if (treeList.Items.Count == 0)
+                if (loading)
+                {
+                    spinner.Update(info);
+                    ctx.Render(
+                        new BoxWidget()
+                            .Border(Border.Rounded)
+                            .MarkupTitle("[bold darkorange]Cache[/]")
+                            .Inner(Paragraph.FromMarkup($"[grey]Loading {cache.Count:N0} cache entries...[/]", null).Centered().AlignedMiddle()),
+                        contentArea);
+                }
+                else if (treeList.Items.Count == 0)
                 {
                     ctx.Render(
                         new BoxWidget()
@@ -110,6 +177,17 @@ public static class CacheViewer
             }
 
             var key = Console.ReadKey(true);
+
+            // While loading, only allow quitting
+            if (loading)
+            {
+                if (key.Key == ConsoleKey.Q)
+                {
+                    running = false;
+                }
+                continue;
+            }
+
             switch (key.Key)
             {
                 case ConsoleKey.Q:
@@ -326,6 +404,13 @@ public static class CacheViewer
             list.Add(entry);
         }
 
+        // Pre-compute stale status for all entries once (avoids repeated file I/O)
+        var staleMap = new Dictionary<string, bool>(entries.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            staleMap[entry.FilePath] = cache.IsStale(entry.FilePath);
+        }
+
         // Collect all unique directory paths and build hierarchy
         var allDirs = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var dir in dirEntries.Keys)
@@ -338,11 +423,36 @@ public static class CacheViewer
             }
         }
 
+        // Pre-compute aggregated stats per directory in a single pass over entries
+        var dirFileCount = new Dictionary<string, int>(allDirs.Count, StringComparer.OrdinalIgnoreCase);
+        var dirTotalSize = new Dictionary<string, long>(allDirs.Count, StringComparer.OrdinalIgnoreCase);
+        var dirStaleCount = new Dictionary<string, int>(allDirs.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var dir in allDirs)
+        {
+            dirFileCount[dir] = 0;
+            dirTotalSize[dir] = 0;
+            dirStaleCount[dir] = 0;
+        }
+        foreach (var entry in entries)
+        {
+            var isStale = staleMap[entry.FilePath];
+            var current = Path.GetDirectoryName(entry.FilePath) ?? "";
+            while (!string.IsNullOrEmpty(current) && current.Length >= commonRoot.Length)
+            {
+                dirFileCount[current]++;
+                dirTotalSize[current] += entry.FileSize;
+                if (isStale)
+                {
+                    dirStaleCount[current]++;
+                }
+                current = Path.GetDirectoryName(current) ?? "";
+            }
+        }
+
         // Calculate depth relative to common root
         int rootDepth = commonRoot.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).Length;
 
         var items = new List<CacheTreeItem>();
-        var dirItemMap = new Dictionary<string, CacheTreeItem>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var dir in allDirs)
         {
@@ -350,16 +460,11 @@ public static class CacheViewer
             var dirItem = new CacheTreeItem(dir + Path.DirectorySeparatorChar, isDirectory: true, depth: dirDepth)
             {
                 IsExpanded = true,
+                FileCount = dirFileCount[dir],
+                TotalSize = dirTotalSize[dir],
+                StaleCount = dirStaleCount[dir],
             };
 
-            // Calculate aggregated stats for this directory
-            var filesUnder = entries.Where(e =>
-                (Path.GetDirectoryName(e.FilePath) ?? "").StartsWith(dir, StringComparison.OrdinalIgnoreCase)).ToList();
-            dirItem.FileCount = filesUnder.Count;
-            dirItem.TotalSize = filesUnder.Sum(e => e.FileSize);
-            dirItem.StaleCount = filesUnder.Count(e => cache.IsStale(e.FilePath));
-
-            dirItemMap[dir] = dirItem;
             items.Add(dirItem);
 
             // Add file entries for this directory
@@ -369,7 +474,7 @@ public static class CacheViewer
                 {
                     var fileItem = new CacheTreeItem(entry.FilePath, isDirectory: false, depth: dirDepth + 1, entry)
                     {
-                        IsStale = cache.IsStale(entry.FilePath),
+                        IsStale = staleMap[entry.FilePath],
                     };
                     items.Add(fileItem);
                 }
