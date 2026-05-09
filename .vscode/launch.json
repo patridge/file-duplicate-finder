@@ -6,7 +6,7 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
-            "program": "${workspaceFolder}/FileDeduplicator/bin/Debug/net9.0/FileDeduplicator",
+            "program": "${workspaceFolder}/FileDeduplicator/bin/Debug/net10.0/FileDeduplicator.dll",
             "args": [
                 "scan",
                 "--path",
@@ -21,7 +21,7 @@
             "type": "coreclr",
             "request": "launch",
             "preLaunchTask": "build",
-            "program": "${workspaceFolder}/FileDeduplicator/bin/Debug/net9.0/FileDeduplicator",
+            "program": "${workspaceFolder}/FileDeduplicator/bin/Debug/net10.0/FileDeduplicator.dll",
             "args": [
                 "scan",
                 "--path",
@@ -30,6 +30,16 @@
             "cwd": "${workspaceFolder}/FileDeduplicator",
             "console": "integratedTerminal",
             "stopAtEntry": false
+        },
+        {
+            "name": "Debug - cache view",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/FileDeduplicator/bin/Debug/net10.0/FileDeduplicator.dll",
+            "args": ["cache", "view"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
         }
     ],
     "inputs": [
