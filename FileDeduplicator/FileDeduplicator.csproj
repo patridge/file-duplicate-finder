@@ -9,7 +9,6 @@
 
     <PropertyGroup>
         <PublishSingleFile>true</PublishSingleFile>
-        <SelfContained>true</SelfContained>
         <PublishTrimmed>true</PublishTrimmed>
         <TrimMode>link</TrimMode>
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
