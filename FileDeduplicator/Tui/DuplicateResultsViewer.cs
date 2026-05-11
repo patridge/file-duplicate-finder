@@ -523,6 +523,10 @@ public static class DuplicateResultsViewer
                 Width = ColumnWidth.Fixed(15),
                 Alignment = Spectre.Tui.Justify.Right,
             },
+            new TableColumn(new TextLine { Spans = [new TextSpan("Modified", null)] })
+            {
+                Width = ColumnWidth.Fixed(21),
+            },
             new TableColumn(new TextLine { Spans = [new TextSpan("Path", null)] })
             {
                 Width = ColumnWidth.Star(3),
