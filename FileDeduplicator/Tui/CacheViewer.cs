@@ -10,6 +10,12 @@ namespace FileDeduplicator.Tui;
 
 public static class CacheViewer
 {
+    /// <summary>
+    /// Number of non-content layout rows (title, summary, status, box border).
+    /// Subtracted from terminal height to calculate page-jump size.
+    /// </summary>
+    private const int LayoutChromeRows = 5;
+
     public static void Show(FileHashCache cache)
     {
         Console.OutputEncoding = Encoding.Unicode;
@@ -76,6 +82,9 @@ public static class CacheViewer
         var spinner = new SpinnerWidget().Kind(SpinnerKind.Default);
         Log("Entering render loop");
 
+        // Two-phase paging: after forcing a scroll position, adjust selection on the next frame
+        int? pendingPageTarget = null;
+
         var layout = new Layout("Root").SplitRows(
             new Layout("Title").Size(1),
             new Layout("Summary").Size(1),
@@ -84,6 +93,13 @@ public static class CacheViewer
 
         while (running)
         {
+            // Apply pending page target after the previous frame established scroll position
+            if (pendingPageTarget != null)
+            {
+                treeList.SelectedIndex = pendingPageTarget.Value;
+                pendingPageTarget = null;
+            }
+
             // Once loading finishes, populate the list once
             if (!loading && treeList.Items.Count == 0 && allItems.Count > 0)
             {
@@ -198,6 +214,39 @@ public static class CacheViewer
                     break;
                 case ConsoleKey.DownArrow:
                     treeList.MoveDown();
+                    break;
+                case ConsoleKey.PageUp:
+                {
+                    int pageSize = Math.Max(1, Console.WindowHeight - LayoutChromeRows);
+                    int current = treeList.SelectedIndex ?? 0;
+                    int target = Math.Max(0, current - pageSize);
+                    int scrollForce = Math.Max(0, target - pageSize + 1);
+                    treeList.SelectedIndex = scrollForce;
+                    if (scrollForce != target)
+                    {
+                        pendingPageTarget = target;
+                    }
+                    break;
+                }
+                case ConsoleKey.PageDown:
+                {
+                    int pageSize = Math.Max(1, Console.WindowHeight - LayoutChromeRows);
+                    int maxIndex = treeList.Items.Count - 1;
+                    int current = treeList.SelectedIndex ?? 0;
+                    int target = Math.Min(maxIndex, current + pageSize);
+                    int scrollForce = Math.Min(maxIndex, target + pageSize - 1);
+                    treeList.SelectedIndex = scrollForce;
+                    if (scrollForce != target)
+                    {
+                        pendingPageTarget = target;
+                    }
+                    break;
+                }
+                case ConsoleKey.Home:
+                    treeList.MoveToStart();
+                    break;
+                case ConsoleKey.End:
+                    treeList.MoveToEnd();
                     break;
                 case ConsoleKey.Enter:
                     if (treeList.SelectedItem is { IsDirectory: true } dirItem)

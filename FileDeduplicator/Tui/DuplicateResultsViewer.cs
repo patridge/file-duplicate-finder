@@ -11,6 +11,12 @@ namespace FileDeduplicator.Tui;
 
 public static class DuplicateResultsViewer
 {
+    /// <summary>
+    /// Number of non-content layout rows (title, summary, progress, status, box border).
+    /// Subtracted from terminal height to calculate page-jump size.
+    /// </summary>
+    private const int LayoutChromeRows = 8;
+
     private enum ViewMode
     {
         Scanning,
@@ -165,6 +171,9 @@ public static class DuplicateResultsViewer
         TableWidget<FileDetailRow>? fileTable = null;
         DuplicateGroupListItem? selectedGroup = null;
 
+        // Two-phase paging: after forcing a scroll position, adjust selection on the next frame
+        int? pendingPageTarget = null;
+
         var layout = new Layout("Root").SplitRows(
             new Layout("Title").Size(1),
             new Layout("Summary").Size(1),
@@ -174,6 +183,20 @@ public static class DuplicateResultsViewer
 
         while (running)
         {
+            // Apply pending page target after the previous frame established scroll position
+            if (pendingPageTarget != null)
+            {
+                if (mode == ViewMode.GroupList || mode == ViewMode.Scanning)
+                {
+                    groupList.SelectedIndex = pendingPageTarget.Value;
+                }
+                else if (fileTable != null)
+                {
+                    fileTable.SelectedIndex = pendingPageTarget.Value;
+                }
+                pendingPageTarget = null;
+            }
+
             // Sync new groups from background thread into the list widget
             if (mode == ViewMode.Scanning || mode == ViewMode.GroupList)
             {
@@ -414,6 +437,82 @@ public static class DuplicateResultsViewer
                     else
                     {
                         fileTable?.MoveDown();
+                    }
+                    break;
+                case ConsoleKey.PageUp:
+                {
+                    int pageSize = Math.Max(1, Console.WindowHeight - LayoutChromeRows);
+                    if (mode == ViewMode.GroupList || mode == ViewMode.Scanning)
+                    {
+                        int current = groupList.SelectedIndex ?? 0;
+                        int target = Math.Max(0, current - pageSize);
+                        int scrollForce = Math.Max(0, target - pageSize + 1);
+                        groupList.SelectedIndex = scrollForce;
+                        if (scrollForce != target)
+                        {
+                            pendingPageTarget = target;
+                        }
+                    }
+                    else if (fileTable != null)
+                    {
+                        int current = fileTable.SelectedIndex ?? 0;
+                        int target = Math.Max(0, current - pageSize);
+                        int scrollForce = Math.Max(0, target - pageSize + 1);
+                        fileTable.SelectedIndex = scrollForce;
+                        if (scrollForce != target)
+                        {
+                            pendingPageTarget = target;
+                        }
+                    }
+                    break;
+                }
+                case ConsoleKey.PageDown:
+                {
+                    int pageSize = Math.Max(1, Console.WindowHeight - LayoutChromeRows);
+                    if (mode == ViewMode.GroupList || mode == ViewMode.Scanning)
+                    {
+                        int maxIndex = groupList.Items.Count - 1;
+                        int current = groupList.SelectedIndex ?? 0;
+                        int target = Math.Min(maxIndex, current + pageSize);
+                        int scrollForce = Math.Min(maxIndex, target + pageSize - 1);
+                        groupList.SelectedIndex = scrollForce;
+                        if (scrollForce != target)
+                        {
+                            pendingPageTarget = target;
+                        }
+                    }
+                    else if (fileTable != null)
+                    {
+                        int maxIndex = fileTable.Rows.Count - 1;
+                        int current = fileTable.SelectedIndex ?? 0;
+                        int target = Math.Min(maxIndex, current + pageSize);
+                        int scrollForce = Math.Min(maxIndex, target + pageSize - 1);
+                        fileTable.SelectedIndex = scrollForce;
+                        if (scrollForce != target)
+                        {
+                            pendingPageTarget = target;
+                        }
+                    }
+                    break;
+                }
+                case ConsoleKey.Home:
+                    if (mode == ViewMode.GroupList || mode == ViewMode.Scanning)
+                    {
+                        groupList.MoveToStart();
+                    }
+                    else
+                    {
+                        fileTable?.MoveToStart();
+                    }
+                    break;
+                case ConsoleKey.End:
+                    if (mode == ViewMode.GroupList || mode == ViewMode.Scanning)
+                    {
+                        groupList.MoveToEnd();
+                    }
+                    else
+                    {
+                        fileTable?.MoveToEnd();
                     }
                     break;
                 case ConsoleKey.Enter:
