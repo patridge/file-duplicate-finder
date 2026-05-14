@@ -25,4 +25,17 @@ public class FileHelpers
         using var stream = File.OpenRead(filePath);
         return GetFileSha256(stream);
     }
+
+    public static string FormatFileSize(long bytes)
+    {
+        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
+        double size = bytes;
+        int suffixIndex = 0;
+        while (size >= 1024 && suffixIndex < suffixes.Length - 1)
+        {
+            size /= 1024;
+            suffixIndex++;
+        }
+        return $"{size:0.00} {suffixes[suffixIndex]}";
+    }
 }

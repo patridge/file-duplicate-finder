@@ -8,6 +8,7 @@ namespace FileDeduplicator.Common
     public class FileScanner
     {
         public IFileComparer? Comparer { get; set; }
+        public FileHashCache? HashCache { get; set; }
 
         public FileScanner() { }
         public FileScanner(IFileComparer comparer)
@@ -36,7 +37,9 @@ namespace FileDeduplicator.Common
                 try
                 {
                     var fileInfo = new FileInfo(filePath);
-                    var hashBytes = FileHelpers.GetFileSha256(filePath);
+                    var hashBytes = HashCache != null
+                        ? HashCache.GetOrComputeHash(filePath)
+                        : FileHelpers.GetFileSha256(filePath);
                     fileDetailsList.Add(new FileDetails
                     {
                         DetailsRetrieved = DateTime.UtcNow,
@@ -69,7 +72,8 @@ namespace FileDeduplicator.Common
             string[]? excludeFileNames = null,
             Action<string>? onStatus = null,
             Action<double, string>? onProgress = null,
-            Action<string, string>? onFileSkipped = null)
+            Action<string, string>? onFileSkipped = null,
+            Action<List<FileDetails>>? onDuplicateGroupFound = null)
         {
             var normalizedExcludes = (excludePaths ?? [])
                 .Select(p => Path.GetFullPath(p).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar)
@@ -107,7 +111,8 @@ namespace FileDeduplicator.Common
                     if (totalFound % 500 == 0)
                     {
                         var dir = Path.GetDirectoryName(filePath) ?? filePath;
-                        onProgress?.Invoke(-1, $"Discovering files... {candidates.Count} matched, {totalFound} found ({dir})");
+                        var prefix = $"Discovering files... {candidates.Count} matched, {totalFound} found";
+                        onProgress?.Invoke(-1, $"{prefix} ({dir})");
                     }
                 }
             }
@@ -116,7 +121,35 @@ namespace FileDeduplicator.Common
             {
                 onStatus?.Invoke($"Skipped {skippedCount} inaccessible file(s).");
             }
-            onStatus?.Invoke($"Found {candidates.Count} file(s) at or above {FormatFileSize(minSizeBytes)}.");
+            onStatus?.Invoke($"Found {candidates.Count} file(s) at or above {FileHelpers.FormatFileSize(minSizeBytes)}.");
+
+            // When caching is enabled, hash ALL candidates so future scans benefit from cached data
+            if (HashCache != null)
+            {
+                onStatus?.Invoke($"Hashing {candidates.Count} file(s)...");
+                int cachedCount = 0;
+                foreach (var (filePath, fileInfo) in candidates)
+                {
+                    cachedCount++;
+                    double pct = (double)cachedCount / candidates.Count * 100;
+                    onProgress?.Invoke(pct, $"Hashing [{cachedCount}/{candidates.Count}] {filePath}");
+
+                    try
+                    {
+                        HashCache.GetOrComputeHash(filePath);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        // Skip files that can't be hashed
+                    }
+
+                    if (cachedCount % 100 == 0)
+                    {
+                        HashCache.Save();
+                    }
+                }
+                HashCache.Save();
+            }
 
             // Phase 2: Group by file size — only files sharing a size can be duplicates
             var sizeGroups = candidates
@@ -134,11 +167,13 @@ namespace FileDeduplicator.Common
             {
                 processedCount++;
                 double pct = (double)processedCount / filesToProcess.Count * 100;
-                onProgress?.Invoke(pct, filePath);
+                onProgress?.Invoke(pct, $"Hashing [{processedCount}/{filesToProcess.Count}] {filePath}");
 
                 try
                 {
-                    var hashBytes = FileHelpers.GetFileSha256(filePath);
+                    var hashBytes = HashCache != null
+                        ? HashCache.GetOrComputeHash(filePath)
+                        : FileHelpers.GetFileSha256(filePath);
                     fileDetailsByPath[filePath] = new FileDetails
                     {
                         DetailsRetrieved = DateTime.UtcNow,
@@ -149,6 +184,12 @@ namespace FileDeduplicator.Common
                         Created = SafeGetTimestamp(() => fileInfo.CreationTimeUtc),
                         LastAccessed = SafeGetTimestamp(() => fileInfo.LastAccessTimeUtc),
                     };
+
+                    // Periodically save cache to avoid losing work if interrupted
+                    if (HashCache != null && processedCount % 100 == 0)
+                    {
+                        HashCache.Save();
+                    }
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
@@ -156,6 +197,9 @@ namespace FileDeduplicator.Common
                     onStatus?.Invoke($"Skipping inaccessible file: {filePath}");
                 }
             }
+
+            // Save cache after all hashing is complete
+            HashCache?.Save();
 
             // Phase 4: Group duplicates
             if (comparers is { Length: > 0 })
@@ -192,7 +236,11 @@ namespace FileDeduplicator.Common
                         }
                     }
 
-                    allGroups.AddRange(groups.Where(g => g.Count > 1));
+                    foreach (var group in groups.Where(g => g.Count > 1))
+                    {
+                        allGroups.Add(group);
+                        onDuplicateGroupFound?.Invoke(group);
+                    }
                 }
 
                 return allGroups;
@@ -200,11 +248,18 @@ namespace FileDeduplicator.Common
             else
             {
                 // Hash-based grouping (exact match)
-                return fileDetailsByPath.Values
+                var allGroups = fileDetailsByPath.Values
                     .GroupBy(f => f.Sha256Hash.ToHexString())
                     .Where(g => g.Count() > 1)
                     .Select(g => g.ToList())
                     .ToList();
+
+                foreach (var group in allGroups)
+                {
+                    onDuplicateGroupFound?.Invoke(group);
+                }
+
+                return allGroups;
             }
         }
 
@@ -264,19 +319,6 @@ namespace FileDeduplicator.Common
                     // Skip inaccessible subdirectories
                 }
             }
-        }
-
-        private static string FormatFileSize(long bytes)
-        {
-            string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
-            double size = bytes;
-            int suffixIndex = 0;
-            while (size >= 1024 && suffixIndex < suffixes.Length - 1)
-            {
-                size /= 1024;
-                suffixIndex++;
-            }
-            return $"{size:0.##} {suffixes[suffixIndex]}";
         }
 
         public bool AreFilesEquivalent(string filePath1, string filePath2)

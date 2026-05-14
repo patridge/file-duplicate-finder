@@ -5,7 +5,7 @@ using Spectre.Console.Cli;
 
 namespace FileDeduplicator.Commands;
 
-[Description("Compare two files for size and hash.")]
+[Description("Compare two files for size, hash, and content equivalence.")]
 public sealed class CompareCommand : Command<CompareCommand.Settings>
 {
     public sealed class Settings : CommandSettings
@@ -17,7 +17,24 @@ public sealed class CompareCommand : Command<CompareCommand.Settings>
         [CommandArgument(1, "<FILE2>")]
         [Description("The path to the second file to compare.")]
         public required string File2Path { get; set; }
+
+        [CommandOption("-m|--allow-metadata-diffs")]
+        [Description("Allow metadata differences when comparing files (e.g., ignore ID3 tags, EXIF data). Files are compared by content only.")]
+        [DefaultValue(false)]
+        public bool AllowMetadataDiffs { get; set; }
     }
+
+    private static readonly IFileComparer[] MetadataComparers =
+    [
+        new AudioFileComparer(),
+        new ImageFileComparer(),
+        new BinaryFileComparer { IgnoreMetadata = true },
+    ];
+
+    private static readonly IFileComparer[] DefaultComparers =
+    [
+        new BinaryFileComparer { IgnoreMetadata = true },
+    ];
 
     protected override int Execute(CommandContext context, Settings settings, CancellationToken cancellationToken)
     {
@@ -47,6 +64,13 @@ public sealed class CompareCommand : Command<CompareCommand.Settings>
         // Determine if values are different
         var sizesMatch = file1Size == file2Size;
         var hashesMatch = file1Hash == file2Hash;
+
+        // Use content-aware comparison via the comparer system
+        var comparers = settings.AllowMetadataDiffs ? MetadataComparers : DefaultComparers;
+        var comparer = comparers.FirstOrDefault(c =>
+            c.CanCompare(settings.File1Path) && c.CanCompare(settings.File2Path));
+        var contentMatch = hashesMatch || (comparer?.AreFilesEquivalent(settings.File1Path, settings.File2Path) ?? false);
+        var comparerUsed = comparer?.GetType().Name.Replace("FileComparer", "");
 
         // Create comparison table
         var table = new Table();
@@ -86,14 +110,31 @@ public sealed class CompareCommand : Command<CompareCommand.Settings>
             hashMatchIndicator
         );
 
+        // Add content comparison row when hashes differ but content matches
+        if (!hashesMatch && comparer != null)
+        {
+            var contentLabel = $"Content ({comparerUsed})";
+            var contentIndicator = contentMatch ? "[green]✓[/]" : "[red]✗[/]";
+            table.AddRow(
+                contentLabel,
+                "[dim]-[/]",
+                "[dim]-[/]",
+                contentIndicator
+            );
+        }
+
         AnsiConsole.WriteLine();
         AnsiConsole.Write(table);
         AnsiConsole.WriteLine();
 
         // Summary
-        if (sizesMatch && hashesMatch)
+        if (hashesMatch)
         {
             AnsiConsole.MarkupLine("[green]The files are identical.[/]");
+        }
+        else if (contentMatch)
+        {
+            AnsiConsole.MarkupLine("[green]The files have identical content (metadata differs).[/]");
         }
         else
         {
